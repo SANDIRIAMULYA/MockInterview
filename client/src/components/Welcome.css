@@ -1,0 +1,120 @@
+/* General Styles */
+body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #6a11cb, #2575fc);
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.welcome-container {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 15px;
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.welcome-container h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Form Styles */
+.welcome-container form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.welcome-container input {
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 16px;
+    outline: none;
+    transition: background 0.3s ease;
+}
+
+.welcome-container input::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.welcome-container input:focus {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.welcome-container button[type="submit"] {
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: #6a11cb;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.welcome-container button[type="submit"]:hover {
+    background: #2575fc;
+}
+
+/* Toggle Button Styles */
+.welcome-container p {
+    margin-top: 15px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.welcome-container p button {
+    background: none;
+    border: none;
+    color: #6a11cb;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 0.3s ease;
+}
+
+.welcome-container p button:hover {
+    color: #2575fc;
+}
+
+/* Error Message Styles */
+.error {
+    color: #ff6b6b;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+/* Quote Styles */
+.quote {
+    margin-top: 30px;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+}
+
+.quote::before {
+    content: "“";
+    font-size: 24px;
+    color: #6a11cb;
+}
+
+.quote::after {
+    content: "”";
+    font-size: 24px;
+    color: #6a11cb;
+}
