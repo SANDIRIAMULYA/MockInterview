@@ -1,40 +1,100 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Welcome from './components/Welcome';
-import ResumeUpload from './components/ResumeUpload';
 import Interview from './components/Interview';
+import ResumeUpload from './components/ResumeUpload';
 import './App.css';
 
 function App() {
-  const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
+  const [sessionData, setSessionData] = useState(null);
+
+  // Check for existing session on initial load
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    const storedSession = localStorage.getItem('currentSession');
+    
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error('Failed to parse user data', e);
+        localStorage.removeItem('user');
+      }
+    }
+    
+    if (storedSession) {
+      setSessionData({ session_id: storedSession });
+    }
+  }, []);
+
+  const handleSessionStart = (data) => {
+    setSessionData(data);
+    localStorage.setItem('currentSession', data.session_id);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setSessionData(null);
+    localStorage.removeItem('user');
+    localStorage.removeItem('currentSession');
+  };
+
+  // Protected route component
+  const ProtectedRoute = ({ children }) => {
+    if (!user) {
+      return <Navigate to="/" replace />;
+    }
+    return children;
+  };
 
   return (
     <Router>
       <div className="App">
         <header>
           <h1>MockInsight</h1>
+          {user && (
+            <div className="user-controls">
+              <span>Welcome, {user.name}</span>
+              <button onClick={handleLogout}>Logout</button>
+            </div>
+          )}
         </header>
+        
         <Routes>
-          <Route path="/" element={<Welcome setUser={setUser} />} />
+          <Route 
+            path="/" 
+            element={
+              user ? (
+                <Navigate to="/upload" replace />
+              ) : (
+                <Welcome setUser={setUser} />
+              )
+            } 
+          />
+          
           <Route
             path="/upload"
             element={
-              user ? (
-                <ResumeUpload onSessionStart={setSession} />
-              ) : (
-                <div>Please log in to continue.</div>
-              )
+              <ProtectedRoute>
+                <ResumeUpload 
+                  onSessionStart={handleSessionStart} 
+                  existingSession={sessionData}
+                />
+              </ProtectedRoute>
             }
           />
+          
           <Route
             path="/interview"
             element={
-              session ? (
-                <Interview session={session} />
-              ) : (
-                <div>Please start a session first.</div>
-              )
+              <ProtectedRoute>
+                {sessionData ? (
+                  <Interview sessionData={sessionData} />
+                ) : (
+                  <Navigate to="/upload" replace />
+                )}
+              </ProtectedRoute>
             }
           />
         </Routes>

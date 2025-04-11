@@ -1,120 +1,108 @@
-/* General Styles */
+/* Welcome.css */
+
 body {
     margin: 0;
-    font-family: 'Poppins', sans-serif;
-    background: linear-gradient(135deg, #6a11cb, #2575fc);
-    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to right, #6a11cb, #2575fc);
+    min-height: 100vh;
     display: flex;
-    justify-content: center;
     align-items: center;
-    height: 100vh;
-}
-
-.welcome-container {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border-radius: 15px;
-    padding: 40px;
+    justify-content: center;
+  }
+  
+  .welcome-container {
+    background: #ffffff;
+    padding: 2rem 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     width: 100%;
     max-width: 400px;
     text-align: center;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.welcome-container h2 {
-    font-size: 28px;
-    margin-bottom: 20px;
-    color: #fff;
-    font-weight: 600;
-}
-
-/* Form Styles */
-.welcome-container form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.welcome-container input {
-    padding: 12px;
-    border: none;
+    animation: fadeIn 0.6s ease-in-out;
+  }
+  
+  .welcome-container h2 {
+    margin-bottom: 1.5rem;
+    color: #333;
+    font-size: 1.8rem;
+  }
+  
+  form input {
+    display: block;
+    width: 100%;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border: 1px solid #ccc;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
-    font-size: 16px;
+    font-size: 1rem;
+    transition: border 0.2s;
+  }
+  
+  form input:focus {
+    border-color: #2575fc;
     outline: none;
-    transition: background 0.3s ease;
-}
-
-.welcome-container input::placeholder {
-    color: rgba(255, 255, 255, 0.7);
-}
-
-.welcome-container input:focus {
-    background: rgba(255, 255, 255, 0.3);
-}
-
-.welcome-container button[type="submit"] {
-    padding: 12px;
+  }
+  
+  button[type="submit"] {
+    background-color: #2575fc;
+    color: white;
     border: none;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
     border-radius: 8px;
-    background: #6a11cb;
-    color: #fff;
-    font-size: 16px;
-    font-weight: 600;
     cursor: pointer;
-    transition: background 0.3s ease;
-}
-
-.welcome-container button[type="submit"]:hover {
-    background: #2575fc;
-}
-
-/* Toggle Button Styles */
-.welcome-container p {
-    margin-top: 15px;
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.welcome-container p button {
+    margin-top: 0.5rem;
+    transition: background-color 0.3s ease;
+  }
+  
+  button[type="submit"]:hover {
+    background-color: #1e5fd2;
+  }
+  
+  .error {
+    color: #ff4d4f;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+  }
+  
+  p {
+    margin-top: 1rem;
+    font-size: 0.95rem;
+    color: #555;
+  }
+  
+  p button {
     background: none;
     border: none;
-    color: #6a11cb;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: underline;
-    transition: color 0.3s ease;
-}
-
-.welcome-container p button:hover {
     color: #2575fc;
-}
-
-/* Error Message Styles */
-.error {
-    color: #ff6b6b;
-    font-size: 14px;
-    margin-top: 10px;
-}
-
-/* Quote Styles */
-.quote {
-    margin-top: 30px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1rem;
+  }
+  
+  p button:hover {
+    text-decoration: underline;
+  }
+  
+  .quote {
+    margin-top: 2rem;
     font-style: italic;
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 14px;
-}
-
-.quote::before {
-    content: "“";
-    font-size: 24px;
-    color: #6a11cb;
-}
-
-.quote::after {
-    content: "”";
-    font-size: 24px;
-    color: #6a11cb;
-}
+    font-size: 0.95rem;
+    color: #666;
+    background: #f5f5f5;
+    padding: 1rem;
+    border-left: 4px solid #2575fc;
+    border-radius: 8px;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
