@@ -5,10 +5,10 @@ import './Interview.css';
 const Interview = () => {
     const navigate = useNavigate();
     const [sessionData, setSessionData] = useState(() => {
-        // Get session data from localStorage if available
         const savedSession = localStorage.getItem('interviewSession');
         return savedSession ? JSON.parse(savedSession) : null;
     });
+
     const [questionsBySkill, setQuestionsBySkill] = useState({});
     const [currentSkillIndex, setCurrentSkillIndex] = useState(0);
     const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -19,37 +19,55 @@ const Interview = () => {
     const [interviewCompleted, setInterviewCompleted] = useState(false);
     const [skills, setSkills] = useState([]);
 
-    // Initialize interview when component mounts
+    // Restore session on mount
     useEffect(() => {
-        if (sessionData) {
-            handleSessionStart(sessionData);
+        const savedSession = localStorage.getItem('interviewSession');
+        const savedProgress = localStorage.getItem('interviewProgress');
+
+        if (savedSession) {
+            const session = JSON.parse(savedSession);
+            const progress = savedProgress ? JSON.parse(savedProgress) : null;
+            handleSessionStart(session, progress);
         }
     }, []);
 
-    const handleSessionStart = (data) => {
+    // Save progress when key values change
+    useEffect(() => {
+        if (interviewStarted) {
+            const progress = {
+                currentSkillIndex,
+                currentQIndex,
+                messages,
+            };
+            localStorage.setItem('interviewProgress', JSON.stringify(progress));
+        }
+    }, [currentSkillIndex, currentQIndex, messages, interviewStarted]);
+
+    const handleSessionStart = (data, progress = null) => {
         setSessionData(data);
         setSkills(data.skills);
         setQuestionsBySkill(data.questions || {});
         setInterviewStarted(true);
-        startInterview(data.questions, data.skills);
+
+        if (progress) {
+            setCurrentSkillIndex(progress.currentSkillIndex);
+            setCurrentQIndex(progress.currentQIndex);
+            setMessages(progress.messages);
+        } else {
+            startInterview(data.questions, data.skills);
+        }
     };
 
     const startInterview = (questions, skills) => {
-        if (!questions || !skills || skills.length === 0) {
-            console.error('No questions or skills available');
-            return;
-        }
+        if (!questions || !skills || skills.length === 0) return;
 
         const firstSkill = skills[0];
         const firstQuestion = questions[firstSkill]?.[0];
-        
-        if (!firstQuestion) {
-            console.error('No questions available for the first skill');
-            return;
-        }
 
-        setMessages([{ 
-            type: 'bot', 
+        if (!firstQuestion) return;
+
+        setMessages([{
+            type: 'bot',
             text: firstQuestion,
             skill: firstSkill,
             timestamp: new Date().toLocaleTimeString()
@@ -66,32 +84,27 @@ const Interview = () => {
         const currentSkill = skillKeys[currentSkillIndex];
         const questionsForSkill = questionsBySkill[currentSkill];
 
-        // Move to next question in current skill
         if (currentQIndex < questionsForSkill.length - 1) {
             const nextQIndex = currentQIndex + 1;
             setCurrentQIndex(nextQIndex);
             addBotMessage(questionsForSkill[nextQIndex], currentSkill);
-        } 
-        // Move to next skill
-        else if (currentSkillIndex < skillKeys.length - 1) {
+        } else if (currentSkillIndex < skillKeys.length - 1) {
             const nextSkillIndex = currentSkillIndex + 1;
             const nextSkill = skillKeys[nextSkillIndex];
             const nextSkillQuestions = questionsBySkill[nextSkill];
-            
+
             setCurrentSkillIndex(nextSkillIndex);
             setCurrentQIndex(0);
             addBotMessage(nextSkillQuestions[0], nextSkill);
-        } 
-        // End interview
-        else {
+        } else {
             setInterviewCompleted(true);
             addBotMessage("You've completed the mock interview. Great job!");
         }
     };
 
     const addBotMessage = (text, skill = null) => {
-        const message = { 
-            type: 'bot', 
+        const message = {
+            type: 'bot',
             text,
             skill,
             timestamp: new Date().toLocaleTimeString()
@@ -100,8 +113,8 @@ const Interview = () => {
     };
 
     const addUserMessage = (text) => {
-        setMessages(prev => [...prev, { 
-            type: 'user', 
+        setMessages(prev => [...prev, {
+            type: 'user',
             text,
             timestamp: new Date().toLocaleTimeString()
         }]);
@@ -109,7 +122,6 @@ const Interview = () => {
 
     const toggleRecording = () => {
         if (isRecording) {
-            // Stop recording
             setIsRecording(false);
             if (userAnswer.trim()) {
                 addUserMessage(userAnswer);
@@ -118,16 +130,13 @@ const Interview = () => {
             }
             setUserAnswer('');
         } else {
-            // Start recording
             setIsRecording(true);
             setUserAnswer('');
         }
     };
 
     const handleSkip = () => {
-        if (isRecording) {
-            toggleRecording();
-        }
+        if (isRecording) toggleRecording();
         handleNextQuestion();
     };
 
@@ -138,6 +147,7 @@ const Interview = () => {
 
     const handleNewInterview = () => {
         localStorage.removeItem('interviewSession');
+        localStorage.removeItem('interviewProgress');
         navigate('/upload');
     };
 
@@ -160,8 +170,8 @@ const Interview = () => {
                         </div>
                         <div className="skill-tags">
                             {skills.map((skill, index) => (
-                                <span 
-                                    key={skill} 
+                                <span
+                                    key={skill}
                                     className={`skill-tag ${index === currentSkillIndex ? 'active' : ''}`}
                                 >
                                     {skill}
@@ -203,7 +213,7 @@ const Interview = () => {
                     <div className="control-panel">
                         {!interviewCompleted ? (
                             <div className="controls-row">
-                                <button 
+                                <button
                                     className={`control-btn record-btn ${isRecording ? 'active' : ''}`}
                                     onClick={toggleRecording}
                                 >
@@ -217,20 +227,20 @@ const Interview = () => {
                                         </>
                                     )}
                                 </button>
-                                <button 
+                                <button
                                     className="control-btn next-btn"
                                     onClick={handleNextQuestion}
                                     disabled={isRecording}
                                 >
                                     Next Question
                                 </button>
-                                <button 
+                                <button
                                     className="control-btn skip-btn"
                                     onClick={handleSkip}
                                 >
                                     Skip Question
                                 </button>
-                                <button 
+                                <button
                                     className="control-btn end-btn"
                                     onClick={handleEndInterview}
                                 >
@@ -242,13 +252,13 @@ const Interview = () => {
                                 <h3>Interview Completed!</h3>
                                 <p>You've answered all the questions.</p>
                                 <div className="completion-buttons">
-                                    <button 
+                                    <button
                                         className="review-btn"
                                         onClick={() => navigate('/review')}
                                     >
                                         Review Answers
                                     </button>
-                                    <button 
+                                    <button
                                         className="new-interview-btn"
                                         onClick={handleNewInterview}
                                     >

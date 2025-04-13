@@ -1,87 +1,203 @@
-/* Container for the entire interview interface */
-.interview-interface {
-    background-color: #ffffff; /* Clean white background */
+.interview-container {
+    max-width: 1200px;
+    margin: 0 auto;
     padding: 2rem;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    max-width: 900px;
-    margin: 2rem auto;
-    min-height: 70vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    background-color: #f5f7fb;
 }
 
-/* Messages container */
-.messages {
-    flex-grow: 1;
+.loading-screen {
+    text-align: center;
+    padding: 4rem;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+}
+
+.back-btn {
+    padding: 0.8rem 1.5rem;
+    background: #4299e1;
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    margin-top: 1rem;
+}
+
+.interview-interface {
+    background: white;
+    border-radius: 1rem;
+    padding: 2rem;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+}
+
+.interview-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid #eee;
+}
+
+.progress-indicator {
+    display: flex;
+    gap: 2rem;
+    margin: 1rem 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.skill-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.skill-tag {
+    background: #e2e8f0;
+    padding: 0.3rem 0.8rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+}
+
+.skill-tag.active {
+    background: #4299e1;
+    color: white;
+}
+
+.conversation-view {
+    margin: 2rem 0;
+    border: 1px solid #eee;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    max-height: 60vh;
     overflow-y: auto;
+}
+
+.message-bubble {
+    margin: 1rem 0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+}
+
+.message-bubble.bot {
+    border-left: 4px solid #4299e1;
+}
+
+.message-bubble.user {
+    border-left: 4px solid #48bb78;
+    background: #f0fff4;
+}
+
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.skill-label {
+    font-size: 0.75rem;
+    color: #4299e1;
+    margin-bottom: 0.5rem;
+}
+
+.recording-section {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: #fff7ed;
+    border-radius: 0.5rem;
+}
+
+.recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #c05621;
     margin-bottom: 1rem;
 }
 
-/* Each message bubble */
-.message-bubble {
-    padding: 14px 18px;
-    border-radius: 10px;
-    margin: 8px 0;
-    max-width: 80%;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    font-size: 16px;
-    line-height: 1.5;
+.pulse-dot {
+    width: 12px;
+    height: 12px;
+    background: #c05621;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
 }
 
-/* Bot message style */
-.message-bubble.bot {
-    background-color: #f1f1f1;
-    color: #000000;
-    align-self: flex-start;
+@keyframes pulse {
+    0% { transform: scale(0.95); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(0.95); }
 }
 
-/* User message style */
-.message-bubble.user {
-    background-color: #007bff;
-    color: #ffffff;
-    align-self: flex-end;
+.answer-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 1rem;
+    border: 1px solid #eee;
+    border-radius: 0.5rem;
+    resize: vertical;
 }
 
-/* Timestamp */
-.timestamp {
-    font-size: 12px;
-    color: #888;
-    margin-top: 4px;
+.control-panel {
+    margin-top: 2rem;
 }
 
-/* Button container */
-.controls {
+.controls-row {
     display: flex;
-    justify-content: center;
     gap: 1rem;
+    justify-content: center;
 }
 
-/* Start/Stop buttons */
-button {
-    padding: 10px 20px;
-    font-size: 16px;
-    background-color: #007bff;
-    color: white;
+.control-btn {
+    padding: 0.8rem 1.5rem;
     border: none;
-    border-radius: 8px;
+    border-radius: 0.5rem;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: all 0.2s;
 }
 
-button:hover {
-    background-color: #0056b3;
+.record-btn {
+    background: #e53e3e;
+    color: white;
 }
 
-/* Optional scrollbar styling for messages */
-.messages::-webkit-scrollbar {
-    width: 8px;
+.record-btn.active {
+    background: #48bb78;
 }
 
-.messages::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 4px;
+.next-btn {
+    background: #4299e1;
+    color: white;
+}
+
+.finish-btn {
+    background: #718096;
+    color: white;
+}
+
+.completion-screen {
+    text-align: center;
+    padding: 2rem;
+    background: #f8fafc;
+    border-radius: 0.5rem;
+    margin-top: 2rem;
+}
+
+.score-display {
+    font-size: 2rem;
+    color: #4299e1;
+    margin: 1rem 0;
+    font-weight: bold;
+}
+
+.new-interview-btn {
+    background: #48bb78;
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
 }

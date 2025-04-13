@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Welcome from './components/Welcome';
 import Interview from './components/Interview';
 import ResumeUpload from './components/ResumeUpload';
@@ -52,7 +52,7 @@ function App() {
     <Router>
       <div className="App">
         <header>
-          <h1>MockInsight</h1>
+          <h1>Mock Interview</h1>
           {user && (
             <div className="user-controls">
               <span>Welcome, {user.name}</span>
@@ -61,43 +61,45 @@ function App() {
           )}
         </header>
         
-        <Routes>
-          <Route 
-            path="/" 
-            element={
-              user ? (
-                <Navigate to="/upload" replace />
-              ) : (
-                <Welcome setUser={setUser} />
-              )
-            } 
-          />
-          
-          <Route
-            path="/upload"
-            element={
-              <ProtectedRoute>
-                <ResumeUpload 
-                  onSessionStart={handleSessionStart} 
-                  existingSession={sessionData}
-                />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/interview"
-            element={
-              <ProtectedRoute>
-                {sessionData ? (
-                  <Interview sessionData={sessionData} />
-                ) : (
+        <main className="main-content">
+          <Routes>
+            <Route 
+              path="/" 
+              element={
+                user ? (
                   <Navigate to="/upload" replace />
-                )}
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+                ) : (
+                  <Welcome setUser={setUser} />
+                )
+              } 
+            />
+            
+            <Route
+              path="/upload"
+              element={
+                <ProtectedRoute>
+                  <ResumeUpload 
+                    onSessionStart={handleSessionStart} 
+                    existingSession={sessionData}
+                  />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/interview"
+              element={
+                <ProtectedRoute>
+                  {sessionData ? (
+                    <Interview sessionData={sessionData} />
+                  ) : (
+                    <Navigate to="/upload" replace />
+                  )}
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </main>
       </div>
     </Router>
   );

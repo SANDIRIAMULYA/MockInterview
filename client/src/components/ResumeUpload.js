@@ -1,30 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import PropTypes from 'prop-types';
 import { useNavigate } from 'react-router-dom';
+import { FaUpload, FaFileAlt } from 'react-icons/fa';
 import './ResumeUpload.css';
 
 const ResumeUpload = ({ onSessionStart }) => {
     const [file, setFile] = useState(null);
-    const [skills, setSkills] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [uploadProgress, setUploadProgress] = useState(0);
     const [sessionData, setSessionData] = useState(null);
     const navigate = useNavigate();
 
+    // Load session data on component mount
     useEffect(() => {
-        const savedSession = localStorage.getItem('interviewSession');
-        if (savedSession) {
-            try {
-                const session = JSON.parse(savedSession);
-                setSessionData(session);
-                setSkills(session.skills || []);
-            } catch (e) {
-                console.error('Failed to parse session data', e);
-                localStorage.removeItem('interviewSession');
+        const loadSessionData = () => {
+            const savedSession = localStorage.getItem('interviewSession');
+            if (savedSession) {
+                try {
+                    setSessionData(JSON.parse(savedSession));
+                } catch (e) {
+                    console.error('Failed to parse session data', e);
+                    localStorage.removeItem('interviewSession');
+                }
             }
-        }
+        };
+
+        loadSessionData();
     }, []);
 
     const handleFileChange = (e) => {
@@ -117,25 +119,24 @@ const ResumeUpload = ({ onSessionStart }) => {
 
             localStorage.setItem('interviewSession', JSON.stringify(newSessionData));
             setSessionData(newSessionData);
-            setSkills(extractedSkills);
-
             onSessionStart(newSessionData);
             navigate('/interview');
-
         } catch (error) {
             console.error('Upload error:', error);
             let errorMsg = 'Failed to process resume. Please try again.';
-            
+
             if (error.response) {
                 if (error.response.status === 401) {
                     errorMsg = 'Session expired. Please login again.';
+                    localStorage.removeItem('token');
+                    navigate('/');
                 } else if (error.response.data?.error) {
                     errorMsg = error.response.data.error;
                 }
             } else if (error.message) {
                 errorMsg = error.message;
             }
-            
+
             setError(errorMsg);
         } finally {
             setLoading(false);
@@ -155,43 +156,44 @@ const ResumeUpload = ({ onSessionStart }) => {
         localStorage.removeItem('interviewSession');
         setSessionData(null);
         setFile(null);
-        setSkills([]);
         setUploadProgress(0);
     };
 
     return (
-        <div className="upload-container">
-            <h2>Upload Your Resume</h2>
-            <p>We'll analyze your resume to create a personalized mock interview</p>
+        <div className="resume-upload-container">
+            {/* Resume Upload Section */}
+            <div className="upload-section">
+                <h2>Upload Your Resume</h2>
+                <p>We'll analyze your resume to create a personalized mock interview</p>
 
-            {sessionData ? (
-                <div className="session-options">
-                    <div className="existing-session">
-                        <p>Resume already uploaded for this session.</p>
-                        <p><strong>File:</strong> {sessionData.resumeFile}</p>
-                        <div className="skills-list">
-                            {sessionData.skills.map((skill, index) => (
-                                <span key={index} className="skill-tag">{skill}</span>
-                            ))}
+                {sessionData ? (
+                    <div className="session-options">
+                        <div className="existing-session">
+                            <p><FaFileAlt /> Resume already uploaded for this session.</p>
+                            <p><strong>File:</strong> {sessionData.resumeFile}</p>
+                            <div className="skills-list">
+                                <h4>Identified Skills:</h4>
+                                {sessionData.skills.map((skill, index) => (
+                                    <span key={index} className="skill-tag">{skill}</span>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="action-buttons">
+                            <button 
+                                onClick={handleContinueInterview}
+                                className="btn primary-btn"
+                            >
+                                Continue Interview
+                            </button>
+                            <button 
+                                onClick={handleNewUpload}
+                                className="btn secondary-btn"
+                            >
+                                Upload New Resume
+                            </button>
                         </div>
                     </div>
-                    <div className="action-buttons">
-                        <button 
-                            onClick={handleContinueInterview}
-                            className="primary-btn"
-                        >
-                            Continue Interview
-                        </button>
-                        <button 
-                            onClick={handleNewUpload}
-                            className="secondary-btn"
-                        >
-                            Upload New Resume
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <>
+                ) : (
                     <form onSubmit={handleUpload} className="upload-form">
                         <div className="file-input-container">
                             <input
@@ -209,7 +211,7 @@ const ResumeUpload = ({ onSessionStart }) => {
                                     </>
                                 ) : (
                                     <>
-                                        <span className="upload-icon">📁</span>
+                                        <FaUpload className="upload-icon" />
                                         <span>Choose File (PDF or Word)</span>
                                     </>
                                 )}
@@ -226,7 +228,7 @@ const ResumeUpload = ({ onSessionStart }) => {
                         <button
                             type="submit"
                             disabled={loading || !file}
-                            className={`upload-btn ${loading ? 'loading' : ''}`}
+                            className={`btn upload-btn ${loading ? 'loading' : ''}`}
                         >
                             {loading ? (
                                 <>
@@ -238,20 +240,16 @@ const ResumeUpload = ({ onSessionStart }) => {
                             )}
                         </button>
                     </form>
+                )}
 
-                    {error && (
-                        <div className="error-message">
-                            <p>{error}</p>
-                        </div>
-                    )}
-                </>
-            )}
+                {error && (
+                    <div className="error-message">
+                        <p>{error}</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
-};
-
-ResumeUpload.propTypes = {
-    onSessionStart: PropTypes.func.isRequired
 };
 
 export default ResumeUpload;

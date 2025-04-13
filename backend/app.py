@@ -91,7 +91,17 @@ def generate_questions(skills):
             pool = SKILL_QUESTIONS[sk]
             questions[skill] = random.sample(pool, min(5, len(pool)))
     return questions
-
+def is_strong_password(password):
+    """Check if password meets complexity requirements"""
+    if len(password) < 8:
+        return False
+    if not re.search(r'[A-Za-z]', password):
+        return False
+    if not re.search(r'[0-9]', password):
+        return False
+    if not re.search(r'[^A-Za-z0-9]', password):
+        return False
+    return True
 # Load questions from Excel at startup
 SKILL_QUESTIONS = load_questions_from_excel()
 
