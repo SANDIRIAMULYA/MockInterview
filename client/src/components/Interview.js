@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Interview.css';
+import { Button } from '@mui/material';
 
 const Interview = () => {
     const navigate = useNavigate();
@@ -8,7 +9,6 @@ const Interview = () => {
         const savedSession = localStorage.getItem('interviewSession');
         return savedSession ? JSON.parse(savedSession) : null;
     });
-
     const [questionsBySkill, setQuestionsBySkill] = useState({});
     const [currentSkillIndex, setCurrentSkillIndex] = useState(0);
     const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -18,8 +18,12 @@ const Interview = () => {
     const [userAnswer, setUserAnswer] = useState('');
     const [interviewCompleted, setInterviewCompleted] = useState(false);
     const [skills, setSkills] = useState([]);
+    const [transcript, setTranscript] = useState(null);
+    const [recordingError, setRecordingError] = useState(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const mediaStreamRef = useRef(null);
 
-    // Restore session on mount
     useEffect(() => {
         const savedSession = localStorage.getItem('interviewSession');
         const savedProgress = localStorage.getItem('interviewProgress');
@@ -29,9 +33,15 @@ const Interview = () => {
             const progress = savedProgress ? JSON.parse(savedProgress) : null;
             handleSessionStart(session, progress);
         }
+
+        // Cleanup on unmount
+        return () => {
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+            }
+        };
     }, []);
 
-    // Save progress when key values change
     useEffect(() => {
         if (interviewStarted) {
             const progress = {
@@ -120,29 +130,147 @@ const Interview = () => {
         }]);
     };
 
-    const toggleRecording = () => {
+    const toggleRecording = async () => {
         if (isRecording) {
-            setIsRecording(false);
-            if (userAnswer.trim()) {
-                addUserMessage(userAnswer);
-            } else {
-                addUserMessage("[Audio response]");
+            // Stop recording
+            try {
+                setIsRecording(false);
+                setRecordingError(null);
+                
+                if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                    mediaRecorderRef.current.stop();
+                }
+
+                // Wait for final data to be available
+                await new Promise(resolve => {
+                    if (mediaRecorderRef.current) {
+                        mediaRecorderRef.current.onstop = resolve;
+                    } else {
+                        resolve();
+                    }
+                });
+
+                if (audioChunksRef.current.length > 0) {
+                    const audioBlob = new Blob(audioChunksRef.current, { 
+                        type: 'audio/webm;codecs=opus' 
+                    });
+                    
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'recording.webm');
+
+                    const response = await fetch('http://localhost:5000/transcribe', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Server responded with ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.error) {
+                        throw new Error(result.error);
+                    }
+
+                    setTranscript(result);
+                    
+                    if (userAnswer.trim()) {
+                        addUserMessage(userAnswer.trim());
+                    } else if (result.text) {
+                        addUserMessage(result.text);
+                    } else {
+                        addUserMessage('[Audio response]');
+                    }
+                } else {
+                    addUserMessage('[No audio recorded]');
+                }
+            } catch (error) {
+                console.error('Error processing recording:', error);
+                setRecordingError('Failed to process recording. Please try again.');
+                addUserMessage('[Error processing audio]');
+            } finally {
+                setUserAnswer('');
+                audioChunksRef.current = [];
+                cleanupMediaStream();
             }
-            setUserAnswer('');
         } else {
-            setIsRecording(true);
-            setUserAnswer('');
+            // Start recording
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Audio recording not supported in this browser');
+                }
+
+                setRecordingError(null);
+                audioChunksRef.current = [];
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 16000,
+                        channelCount: 1
+                    }
+                });
+                
+                mediaStreamRef.current = stream;
+                
+                const options = { mimeType: 'audio/webm;codecs=opus' };
+                const mediaRecorder = new MediaRecorder(stream, options);
+                mediaRecorderRef.current = mediaRecorder;
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        audioChunksRef.current.push(e.data);
+                    }
+                };
+
+                mediaRecorder.onerror = (e) => {
+                    console.error('MediaRecorder error:', e.error);
+                    setRecordingError('Recording error occurred');
+                    setIsRecording(false);
+                    cleanupMediaStream();
+                };
+
+                mediaRecorder.start(1000); // Collect data every second
+                setIsRecording(true);
+            } catch (error) {
+                console.error('Error starting recording:', error);
+                setRecordingError(error.message);
+                setIsRecording(false);
+                cleanupMediaStream();
+            }
         }
     };
 
+    const cleanupMediaStream = () => {
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+            mediaStreamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+    };
+
     const handleSkip = () => {
-        if (isRecording) toggleRecording();
-        handleNextQuestion();
+        if (isRecording) {
+            toggleRecording().then(() => {
+                handleNextQuestion();
+            });
+        } else {
+            handleNextQuestion();
+        }
     };
 
     const handleEndInterview = () => {
-        setInterviewCompleted(true);
-        addBotMessage("Interview ended. Thank you for your participation!");
+        if (isRecording) {
+            toggleRecording().then(() => {
+                setInterviewCompleted(true);
+                addBotMessage("Interview ended. Thank you for your participation!");
+            });
+        } else {
+            setInterviewCompleted(true);
+            addBotMessage("Interview ended. Thank you for your participation!");
+        }
     };
 
     const handleNewInterview = () => {
@@ -208,62 +336,69 @@ const Interview = () => {
                                 />
                             </div>
                         )}
+
+                        {recordingError && (
+                            <div className="error-message">
+                                {recordingError}
+                            </div>
+                        )}
+
+                        {transcript && (
+                            <div className="transcript-section">
+                                <h3>Transcript:</h3>
+                                <p>{transcript.text || 'No transcript available'}</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="control-panel">
                         {!interviewCompleted ? (
                             <div className="controls-row">
-                                <button
-                                    className={`control-btn record-btn ${isRecording ? 'active' : ''}`}
+                                <Button 
                                     onClick={toggleRecording}
+                                    variant="contained"
+                                    color={isRecording ? "secondary" : "primary"}
                                 >
-                                    {isRecording ? (
-                                        <>
-                                            <span className="icon">●</span> Stop Recording
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span className="icon">●</span> Record Answer
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    className="control-btn next-btn"
-                                    onClick={handleNextQuestion}
+                                    {isRecording ? 'Stop Recording' : 'Start Recording'}
+                                </Button>
+                                <Button 
+                                    onClick={handleNextQuestion} 
                                     disabled={isRecording}
+                                    variant="contained"
                                 >
                                     Next Question
-                                </button>
-                                <button
-                                    className="control-btn skip-btn"
+                                </Button>
+                                <Button 
                                     onClick={handleSkip}
+                                    variant="outlined"
                                 >
                                     Skip Question
-                                </button>
-                                <button
-                                    className="control-btn end-btn"
+                                </Button>
+                                <Button 
                                     onClick={handleEndInterview}
+                                    variant="outlined"
+                                    color="error"
                                 >
                                     End Interview
-                                </button>
+                                </Button>
                             </div>
                         ) : (
                             <div className="completion-screen">
                                 <h3>Interview Completed!</h3>
                                 <p>You've answered all the questions.</p>
                                 <div className="completion-buttons">
-                                    <button
-                                        className="review-btn"
+                                    <Button 
                                         onClick={() => navigate('/review')}
+                                        variant="contained"
                                     >
                                         Review Answers
-                                    </button>
-                                    <button
-                                        className="new-interview-btn"
+                                    </Button>
+                                    <Button 
                                         onClick={handleNewInterview}
+                                        variant="contained"
                                     >
                                         Start New Interview
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         )}

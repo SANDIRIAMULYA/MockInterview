@@ -13,6 +13,7 @@ import random
 import tempfile
 import openpyxl
 from bson import ObjectId
+from audio_transcriber import transcribe_audio_file
 
 # Initialize and load resources
 nltk.download('stopwords')
@@ -197,7 +198,41 @@ def get_questions():
         "questions": session.get("questions", {}),
         "skills": session.get("skills", [])
     })
+@app.route("/transcribe", methods=["POST"])
+def transcribe():
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
 
+    audio_file = request.files["audio"]
+    
+    # Validate file
+    if audio_file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+        
+    # Validate file extension
+    allowed_extensions = {'.wav', '.mp3', '.ogg', '.webm', '.m4a', '.flac'}
+    file_ext = os.path.splitext(audio_file.filename)[1].lower()
+    
+    if file_ext not in allowed_extensions:
+        return jsonify({
+            "error": f"Unsupported file type. Allowed types: {', '.join(allowed_extensions)}"
+        }), 400
+
+    try:
+        result = transcribe_audio_file(audio_file, file_extension=file_ext)
+        
+        if "error" in result:
+            return jsonify(result), 500
+            
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            "error": f"Transcription failed: {str(e)}",
+            "pauses": [],
+            "segments": [],
+            "text": ""
+        }), 500
 # ========== MAIN =============
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
