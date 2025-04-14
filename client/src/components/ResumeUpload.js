@@ -179,12 +179,7 @@ const ResumeUpload = ({ onSessionStart }) => {
                             </div>
                         </div>
                         <div className="action-buttons">
-                            <button 
-                                onClick={handleContinueInterview}
-                                className="btn primary-btn"
-                            >
-                                Continue Interview
-                            </button>
+                            
                             <button 
                                 onClick={handleNewUpload}
                                 className="btn secondary-btn"

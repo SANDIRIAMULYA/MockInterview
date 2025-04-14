@@ -5,10 +5,7 @@ import { Button } from '@mui/material';
 
 const Interview = () => {
     const navigate = useNavigate();
-    const [sessionData, setSessionData] = useState(() => {
-        const savedSession = localStorage.getItem('interviewSession');
-        return savedSession ? JSON.parse(savedSession) : null;
-    });
+    const [sessionData, setSessionData] = useState(null);
     const [questionsBySkill, setQuestionsBySkill] = useState({});
     const [currentSkillIndex, setCurrentSkillIndex] = useState(0);
     const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -25,16 +22,15 @@ const Interview = () => {
     const mediaStreamRef = useRef(null);
 
     useEffect(() => {
+        // Clear any previous interview data when component mounts
+        localStorage.removeItem('interviewProgress');
+        
         const savedSession = localStorage.getItem('interviewSession');
-        const savedProgress = localStorage.getItem('interviewProgress');
-
         if (savedSession) {
             const session = JSON.parse(savedSession);
-            const progress = savedProgress ? JSON.parse(savedProgress) : null;
-            handleSessionStart(session, progress);
+            initializeInterview(session);
         }
 
-        // Cleanup on unmount
         return () => {
             if (mediaStreamRef.current) {
                 mediaStreamRef.current.getTracks().forEach(track => track.stop());
@@ -42,8 +38,35 @@ const Interview = () => {
         };
     }, []);
 
+    const initializeInterview = (sessionData) => {
+        // Reset all state for a fresh interview
+        setSessionData(sessionData);
+        setSkills(sessionData.skills);
+        setQuestionsBySkill(sessionData.questions || {});
+        setMessages([]);
+        setCurrentSkillIndex(0);
+        setCurrentQIndex(0);
+        setTranscript(null);
+        setInterviewStarted(true);
+        setInterviewCompleted(false);
+        setRecordingError(null);
+
+        // Start with first question
+        const firstSkill = sessionData.skills[0];
+        const firstQuestion = sessionData.questions[firstSkill]?.[0];
+        
+        if (firstQuestion) {
+            setMessages([{
+                type: 'bot',
+                text: firstQuestion,
+                skill: firstSkill,
+                timestamp: new Date().toLocaleTimeString()
+            }]);
+        }
+    };
+
     useEffect(() => {
-        if (interviewStarted) {
+        if (interviewStarted && !interviewCompleted) {
             const progress = {
                 currentSkillIndex,
                 currentQIndex,
@@ -51,38 +74,7 @@ const Interview = () => {
             };
             localStorage.setItem('interviewProgress', JSON.stringify(progress));
         }
-    }, [currentSkillIndex, currentQIndex, messages, interviewStarted]);
-
-    const handleSessionStart = (data, progress = null) => {
-        setSessionData(data);
-        setSkills(data.skills);
-        setQuestionsBySkill(data.questions || {});
-        setInterviewStarted(true);
-
-        if (progress) {
-            setCurrentSkillIndex(progress.currentSkillIndex);
-            setCurrentQIndex(progress.currentQIndex);
-            setMessages(progress.messages);
-        } else {
-            startInterview(data.questions, data.skills);
-        }
-    };
-
-    const startInterview = (questions, skills) => {
-        if (!questions || !skills || skills.length === 0) return;
-
-        const firstSkill = skills[0];
-        const firstQuestion = questions[firstSkill]?.[0];
-
-        if (!firstQuestion) return;
-
-        setMessages([{
-            type: 'bot',
-            text: firstQuestion,
-            skill: firstSkill,
-            timestamp: new Date().toLocaleTimeString()
-        }]);
-    };
+    }, [currentSkillIndex, currentQIndex, messages, interviewStarted, interviewCompleted]);
 
     const handleNextQuestion = () => {
         if (isRecording) {
@@ -107,8 +99,7 @@ const Interview = () => {
             setCurrentQIndex(0);
             addBotMessage(nextSkillQuestions[0], nextSkill);
         } else {
-            setInterviewCompleted(true);
-            addBotMessage("You've completed the mock interview. Great job!");
+            completeInterview();
         }
     };
 
@@ -137,17 +128,12 @@ const Interview = () => {
                 setIsRecording(false);
                 setRecordingError(null);
                 
-                if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                if (mediaRecorderRef.current?.state !== 'inactive') {
                     mediaRecorderRef.current.stop();
                 }
 
-                // Wait for final data to be available
                 await new Promise(resolve => {
-                    if (mediaRecorderRef.current) {
-                        mediaRecorderRef.current.onstop = resolve;
-                    } else {
-                        resolve();
-                    }
+                    mediaRecorderRef.current.onstop = resolve;
                 });
 
                 if (audioChunksRef.current.length > 0) {
@@ -163,32 +149,23 @@ const Interview = () => {
                         body: formData
                     });
 
-                    if (!response.ok) {
-                        throw new Error(`Server responded with ${response.status}`);
-                    }
-
-                    const result = await response.json();
+                    if (!response.ok) throw new Error(`Server error: ${response.status}`);
                     
-                    if (result.error) {
-                        throw new Error(result.error);
-                    }
+                    const result = await response.json();
+                    if (result.error) throw new Error(result.error);
 
                     setTranscript(result);
                     
-                    if (userAnswer.trim()) {
-                        addUserMessage(userAnswer.trim());
-                    } else if (result.text) {
-                        addUserMessage(result.text);
-                    } else {
-                        addUserMessage('[Audio response]');
-                    }
+                    // Store answer
+                    const answerText = userAnswer.trim() || result.text || '[Audio response]';
+                    addUserMessage(answerText);
                 } else {
                     addUserMessage('[No audio recorded]');
                 }
             } catch (error) {
-                console.error('Error processing recording:', error);
-                setRecordingError('Failed to process recording. Please try again.');
-                addUserMessage('[Error processing audio]');
+                console.error('Recording error:', error);
+                setRecordingError('Failed to process recording');
+                addUserMessage('[Recording error]');
             } finally {
                 setUserAnswer('');
                 audioChunksRef.current = [];
@@ -197,8 +174,8 @@ const Interview = () => {
         } else {
             // Start recording
             try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error('Audio recording not supported in this browser');
+                if (!navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Audio not supported');
                 }
 
                 setRecordingError(null);
@@ -208,13 +185,11 @@ const Interview = () => {
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        sampleRate: 16000,
-                        channelCount: 1
+                        sampleRate: 16000
                     }
                 });
                 
                 mediaStreamRef.current = stream;
-                
                 const options = { mimeType: 'audio/webm;codecs=opus' };
                 const mediaRecorder = new MediaRecorder(stream, options);
                 mediaRecorderRef.current = mediaRecorder;
@@ -226,16 +201,15 @@ const Interview = () => {
                 };
 
                 mediaRecorder.onerror = (e) => {
-                    console.error('MediaRecorder error:', e.error);
-                    setRecordingError('Recording error occurred');
+                    console.error('Recorder error:', e.error);
+                    setRecordingError('Recording failed');
                     setIsRecording(false);
-                    cleanupMediaStream();
                 };
 
-                mediaRecorder.start(1000); // Collect data every second
+                mediaRecorder.start(1000);
                 setIsRecording(true);
             } catch (error) {
-                console.error('Error starting recording:', error);
+                console.error('Recording start error:', error);
                 setRecordingError(error.message);
                 setIsRecording(false);
                 cleanupMediaStream();
@@ -251,39 +225,11 @@ const Interview = () => {
         mediaRecorderRef.current = null;
     };
 
-    const handleSkip = () => {
-        if (isRecording) {
-            toggleRecording().then(() => {
-                handleNextQuestion();
-            });
-        } else {
-            handleNextQuestion();
-        }
-    };
-
-    // Add this to your handleEndInterview function in Interview.js
-const handleEndInterview = () => {
-    if (isRecording) {
-        toggleRecording().then(() => {
-            setInterviewCompleted(true);
-            addBotMessage("Interview ended. Thank you for your participation!");
-            
-            // Save interview results for review
-            const interviewResults = {
-                sessionId: sessionData._id,
-                skills,
-                questions: questionsBySkill,
-                messages,
-                transcript,
-                date: new Date().toISOString()
-            };
-            localStorage.setItem('interviewResults', JSON.stringify(interviewResults));
-        });
-    } else {
+    const completeInterview = () => {
         setInterviewCompleted(true);
-        addBotMessage("Interview ended. Thank you for your participation!");
+        addBotMessage("Interview completed. Thank you!");
         
-        // Save interview results for review
+        // Save final results
         const interviewResults = {
             sessionId: sessionData._id,
             skills,
@@ -292,14 +238,33 @@ const handleEndInterview = () => {
             transcript,
             date: new Date().toISOString()
         };
+        
         localStorage.setItem('interviewResults', JSON.stringify(interviewResults));
-    }
-};
+        localStorage.removeItem('interviewProgress');
+    };
+
+    const handleEndInterview = () => {
+        if (isRecording) {
+            toggleRecording().then(completeInterview);
+        } else {
+            completeInterview();
+        }
+    };
 
     const handleNewInterview = () => {
+        // Clear all interview data
         localStorage.removeItem('interviewSession');
         localStorage.removeItem('interviewProgress');
+        localStorage.removeItem('interviewResults');
         navigate('/upload');
+    };
+
+    const handleSkip = () => {
+        if (isRecording) {
+            toggleRecording().then(handleNextQuestion);
+        } else {
+            handleNextQuestion();
+        }
     };
 
     return (

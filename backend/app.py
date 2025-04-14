@@ -13,6 +13,7 @@ import random
 import tempfile
 import openpyxl
 from bson import ObjectId
+import datetime
 from audio_transcriber import transcribe_audio_file
 
 # Initialize and load resources
@@ -30,7 +31,10 @@ users_collection = db.users
 interviews_collection = db.interviews
 
 # ======== SKILLS DB ===========
-SKILLS_DB = {"python", "java", "c", "c++", "javascript", "react", "html", "css", "node.js", "express.js", "mongodb", "sql", "mysql", "django", "flask", "aws", "azure", "docker", "kubernetes", "pandas", "numpy", "tensorflow", "keras", "machine learning", "nlp", "deep learning"}
+SKILLS_DB = {"python", "java", "c", "c++", "javascript", "react", "html", "css", 
+             "node.js", "express.js", "mongodb", "sql", "mysql", "django", "flask", 
+             "aws", "azure", "docker", "kubernetes", "pandas", "numpy", "tensorflow", 
+             "keras", "machine learning", "nlp", "deep learning"}
 
 # ======== HELPERS ============
 
@@ -53,15 +57,12 @@ def preprocess_text(text):
 def extract_skills(text):
     doc = nlp(text)
     found = set()
-
     for token in doc:
         if token.text in SKILLS_DB:
             found.add(token.text)
-
     for chunk in doc.noun_chunks:
         if chunk.text in SKILLS_DB:
             found.add(chunk.text)
-
     return list(found)
 
 def process_resume(path):
@@ -89,10 +90,11 @@ def generate_questions(skills):
     for skill in skills:
         sk = skill.lower()
         if sk in SKILL_QUESTIONS:
-            questions[skill] = SKILL_QUESTIONS[sk]  # Return all questions
+            pool = SKILL_QUESTIONS[sk]
+            questions[skill] = random.sample(pool, min(10, len(pool)))
     return questions
+
 def is_strong_password(password):
-    """Check if password meets complexity requirements"""
     if len(password) < 8:
         return False
     if not re.search(r'[A-Za-z]', password):
@@ -102,6 +104,7 @@ def is_strong_password(password):
     if not re.search(r'[^A-Za-z0-9]', password):
         return False
     return True
+
 # Load questions from Excel at startup
 SKILL_QUESTIONS = load_questions_from_excel()
 
@@ -127,9 +130,7 @@ def signup():
 
     hashed = hash_password(password)
     users_collection.insert_one({"name": name, "email": email, "password": hashed})
-    
     return jsonify({"message": "Signup successful", "user": {"email": email, "name": name}}), 201
-
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -185,7 +186,6 @@ def upload_resume():
 def get_questions():
     data = request.json
     session_id = data.get("session_id")
-
     if not session_id:
         return jsonify({"error": "Session ID is required"}), 400
 
@@ -197,18 +197,16 @@ def get_questions():
         "questions": session.get("questions", {}),
         "skills": session.get("skills", [])
     })
+
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
 
     audio_file = request.files["audio"]
-    
-    # Validate file
     if audio_file.filename == '':
         return jsonify({"error": "No selected file"}), 400
         
-    # Validate file extension
     allowed_extensions = {'.wav', '.mp3', '.ogg', '.webm', '.m4a', '.flac'}
     file_ext = os.path.splitext(audio_file.filename)[1].lower()
     
@@ -219,12 +217,9 @@ def transcribe():
 
     try:
         result = transcribe_audio_file(audio_file, file_extension=file_ext)
-        
         if "error" in result:
             return jsonify(result), 500
-            
         return jsonify(result)
-        
     except Exception as e:
         return jsonify({
             "error": f"Transcription failed: {str(e)}",
@@ -232,6 +227,47 @@ def transcribe():
             "segments": [],
             "text": ""
         }), 500
-# ========== MAIN =============
+
+@app.route('/complete-interview', methods=['POST'])
+def complete_interview():
+    data = request.json
+    session_id = data.get("session_id")
+    messages = data.get("messages", [])
+    transcript = data.get("transcript", {})
+    
+    if not session_id:
+        return jsonify({"error": "Session ID is required"}), 400
+
+    try:
+        interviews_collection.update_one(
+            {"_id": ObjectId(session_id)},
+            {"$set": {
+                "status": "completed",
+                "messages": messages,
+                "transcript": transcript,
+                "completed": True,
+                "completed_at": datetime.datetime.utcnow()
+            }}
+        )
+        return jsonify({"message": "Interview marked as complete"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/clear-session', methods=['POST'])
+def clear_session():
+    data = request.json
+    user_email = data.get("email")
+    if not user_email:
+        return jsonify({"error": "Email is required"}), 400
+
+    try:
+        interviews_collection.delete_many({
+            "user_email": user_email,
+            "status": {"$ne": "completed"}
+        })
+        return jsonify({"message": "Previous session data cleared"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
