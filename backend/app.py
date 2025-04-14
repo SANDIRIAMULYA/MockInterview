@@ -89,8 +89,7 @@ def generate_questions(skills):
     for skill in skills:
         sk = skill.lower()
         if sk in SKILL_QUESTIONS:
-            pool = SKILL_QUESTIONS[sk]
-            questions[skill] = random.sample(pool, min(5, len(pool)))
+            questions[skill] = SKILL_QUESTIONS[sk]  # Return all questions
     return questions
 def is_strong_password(password):
     """Check if password meets complexity requirements"""

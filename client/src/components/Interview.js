@@ -261,17 +261,40 @@ const Interview = () => {
         }
     };
 
-    const handleEndInterview = () => {
-        if (isRecording) {
-            toggleRecording().then(() => {
-                setInterviewCompleted(true);
-                addBotMessage("Interview ended. Thank you for your participation!");
-            });
-        } else {
+    // Add this to your handleEndInterview function in Interview.js
+const handleEndInterview = () => {
+    if (isRecording) {
+        toggleRecording().then(() => {
             setInterviewCompleted(true);
             addBotMessage("Interview ended. Thank you for your participation!");
-        }
-    };
+            
+            // Save interview results for review
+            const interviewResults = {
+                sessionId: sessionData._id,
+                skills,
+                questions: questionsBySkill,
+                messages,
+                transcript,
+                date: new Date().toISOString()
+            };
+            localStorage.setItem('interviewResults', JSON.stringify(interviewResults));
+        });
+    } else {
+        setInterviewCompleted(true);
+        addBotMessage("Interview ended. Thank you for your participation!");
+        
+        // Save interview results for review
+        const interviewResults = {
+            sessionId: sessionData._id,
+            skills,
+            questions: questionsBySkill,
+            messages,
+            transcript,
+            date: new Date().toISOString()
+        };
+        localStorage.setItem('interviewResults', JSON.stringify(interviewResults));
+    }
+};
 
     const handleNewInterview = () => {
         localStorage.removeItem('interviewSession');

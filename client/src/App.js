@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Welcome from './components/Welcome';
 import Interview from './components/Interview';
 import ResumeUpload from './components/ResumeUpload';
+import Review from './components/Review'; // Import the Review component
 import './App.css';
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
     setSessionData(null);
     localStorage.removeItem('user');
     localStorage.removeItem('currentSession');
+    localStorage.removeItem('interviewResults'); // Clear review data on logout
   };
 
   // Protected route component
@@ -95,6 +97,16 @@ function App() {
                   ) : (
                     <Navigate to="/upload" replace />
                   )}
+                </ProtectedRoute>
+              }
+            />
+
+            {/* New Review Route */}
+            <Route
+              path="/review"
+              element={
+                <ProtectedRoute>
+                  <Review />
                 </ProtectedRoute>
               }
             />
