@@ -15,6 +15,7 @@ import openpyxl
 from bson import ObjectId
 import datetime
 from audio_transcriber import transcribe_audio_file
+from response_analyzer import ResponseAnalyzer
 
 # Initialize and load resources
 nltk.download('stopwords')
@@ -71,42 +72,65 @@ def process_resume(path):
     return extract_skills(cleaned)
 
 def load_questions_from_excel(file_path='qstns.xlsx'):
+    """Load questions from Excel file with proper error handling"""
     qdict = {}
     try:
+        print(f"[DEBUG] Looking for Excel file at: {os.path.abspath(file_path)}")
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Excel file not found at {os.path.abspath(file_path)}")
+            
         wb = openpyxl.load_workbook(file_path)
         sheet = wb.active
-        for row in sheet.iter_rows(min_row=2, values_only=True):
+        
+        print(f"[DEBUG] Excel sheet loaded. Rows: {sheet.max_row}, Columns: {sheet.max_column}")
+        
+        for i, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
             skill = str(row[0]).lower().strip() if row[0] else None
             question = str(row[1]).strip() if row[1] else None
+            
+            print(f"[DEBUG] Row {i}: Skill='{skill}', Question='{question}'")
+            
             if skill and question:
-                qdict.setdefault(skill, []).append(question)
+                if skill not in qdict:
+                    qdict[skill] = []
+                qdict[skill].append(question)  # Just store the question string
+        
+        print(f"[DEBUG] Loaded questions for skills: {list(qdict.keys())}")
+        
+        if not qdict:
+            raise ValueError("Excel file contains no valid questions")
+            
         return qdict
     except Exception as e:
-        print("Excel load error:", e)
-        return {}
+        print(f"[ERROR] Failed to load questions: {str(e)}")
+        raise ValueError(f"Could not load questions: {str(e)}")
 
 def generate_questions(skills):
-    questions = {}
-    for skill in skills:
-        sk = skill.lower()
-        if sk in SKILL_QUESTIONS:
-            pool = SKILL_QUESTIONS[sk]
-            questions[skill] = random.sample(pool, min(10, len(pool)))
-    return questions
+    try:
+        all_questions = load_questions_from_excel()
+        questions = {}
+        
+        for skill in skills:
+            sk = skill.lower()
+            if sk in all_questions:
+                questions[skill] = all_questions[sk]  # Already just strings
+        
+        print(f"[DEBUG] Found questions for: {list(questions.keys())}")
+        
+        if not questions:
+            raise ValueError("No questions available for any of your skills")
+        
+        return questions
+    except Exception as e:
+        raise ValueError(f"Question generation failed: {str(e)}")
 
 def is_strong_password(password):
-    if len(password) < 8:
-        return False
-    if not re.search(r'[A-Za-z]', password):
-        return False
-    if not re.search(r'[0-9]', password):
-        return False
-    if not re.search(r'[^A-Za-z0-9]', password):
-        return False
-    return True
-
-# Load questions from Excel at startup
-SKILL_QUESTIONS = load_questions_from_excel()
+    return (
+        len(password) >= 8 and
+        re.search(r'[A-Za-z]', password) and
+        re.search(r'[0-9]', password) and
+        re.search(r'[^A-Za-z0-9]', password)
+    )
 
 # ========== ROUTES ============
 
@@ -154,33 +178,47 @@ def login():
 def upload_resume():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
+    
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "Empty filename"}), 400
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        path = os.path.join(temp_dir, file.filename)
-        file.save(path)
+    try:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            file.save(temp_file.name)
+            skills = process_resume(temp_file.name)
+            
+        if not skills:
+            return jsonify({"error": "No skills found in resume"}), 400
 
-        try:
-            skills = process_resume(path)
-            questions = generate_questions(skills)
-            session = {
-                "skills": skills,
-                "questions": questions,
-                "status": "started",
-                "transcript": []
-            }
-            result = interviews_collection.insert_one(session)
+        questions = generate_questions(skills)
+        
+        session = {
+            "skills": list(questions.keys()),
+            "questions": questions,
+            "status": "started",
+            "transcript": [],
+            "created_at": datetime.datetime.utcnow()
+        }
+        
+        result = interviews_collection.insert_one(session)
+        
+        return jsonify({
+            "session_id": str(result.inserted_id),
+            "skills": list(questions.keys()),
+            "questions": questions
+        })
 
-            return jsonify({
-                "session_id": str(result.inserted_id),
-                "skills": skills,
-                "questions": questions
-            })
-
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+    finally:
+        if 'temp_file' in locals():
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
 
 @app.route('/get-questions', methods=['POST'])
 def get_questions():
@@ -189,15 +227,124 @@ def get_questions():
     if not session_id:
         return jsonify({"error": "Session ID is required"}), 400
 
-    session = interviews_collection.find_one({"_id": ObjectId(session_id)})
-    if not session:
-        return jsonify({"error": "Session not found"}), 404
+    try:
+        session = interviews_collection.find_one({"_id": ObjectId(session_id)})
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
 
-    return jsonify({
-        "questions": session.get("questions", {}),
-        "skills": session.get("skills", [])
-    })
+        return jsonify({
+            "questions": session.get("questions", {}),
+            "skills": session.get("skills", [])
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route('/analyze-text', methods=['POST'])
+def analyze_text():
+    data = request.json
+    text = data.get("text", "").strip()
+    
+    if not text:
+        return jsonify({"error": "Text is required"}), 400
 
+    try:
+        analyzer = ResponseAnalyzer()
+        
+        # Save text to a temporary PDF for analysis
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            # Create a simple PDF with the text
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_text((50, 50), text)
+            doc.save(temp_file.name)
+            doc.close()
+            
+            analysis_results = analyzer.analyze_response(temp_file.name)
+            
+            if "error" in analysis_results:
+                return jsonify({"error": analysis_results["error"]}), 400
+                
+            return jsonify({
+                "scores": analysis_results["scores"],
+                "word_count": analysis_results["word_count"],
+                "sentence_count": analysis_results["sentence_count"],
+                "improvement_suggestions": analysis_results["improvement_suggestions"]
+            })
+            
+    except Exception as e:
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+        
+    finally:
+        if 'temp_file' in locals():
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+@app.route('/analyze-response', methods=['POST'])
+def analyze_response():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Empty filename"}), 400
+
+    try:
+        # Save the uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            file.save(temp_file.name)
+            
+            # Initialize and use the analyzer
+            analyzer = ResponseAnalyzer()
+            analysis_results = analyzer.analyze_response(temp_file.name)
+            
+            if "error" in analysis_results:
+                return jsonify({"error": analysis_results["error"]}), 400
+                
+            # Format the results for the frontend
+            formatted_results = {
+                "grammar_score": analysis_results["scores"]["grammar_score"],
+                "stop_word_score": analysis_results["scores"]["stop_word_score"],
+                "filler_score": analysis_results["scores"]["filler_score"],
+                "tone_score": analysis_results["scores"]["tone_score"],
+                "overall_score": analysis_results["scores"]["overall_score"],
+                "word_count": analysis_results["word_count"],
+                "sentence_count": analysis_results["sentence_count"],
+                "improvement_suggestions": analysis_results["improvement_suggestions"],
+                "grammar_analysis": {
+                    "error_count": analysis_results["grammar_analysis"]["error_count"],
+                    "error_rate": analysis_results["grammar_analysis"]["error_rate"],
+                    "error_types": analysis_results["grammar_analysis"]["error_types"]
+                },
+                "stop_word_analysis": {
+                    "stop_word_count": analysis_results["stop_word_analysis"]["stop_word_count"],
+                    "stop_word_percentage": analysis_results["stop_word_analysis"]["stop_word_percentage"],
+                    "most_common_stop_words": analysis_results["stop_word_analysis"]["most_common_stop_words"]
+                },
+                "filler_word_analysis": {
+                    "filler_word_count": analysis_results["filler_word_analysis"]["filler_word_count"],
+                    "filler_word_percentage": analysis_results["filler_word_analysis"]["filler_word_percentage"],
+                    "most_common_fillers": analysis_results["filler_word_analysis"]["most_common_fillers"]
+                },
+                "tone_analysis": {
+                    "sentiment_score": analysis_results["tone_analysis"]["sentiment_score"],
+                    "subjectivity_score": analysis_results["tone_analysis"]["subjectivity_score"],
+                    "formality_score": analysis_results["tone_analysis"]["formality_score"],
+                    "words_per_sentence": analysis_results["tone_analysis"]["words_per_sentence"],
+                    "tone_categories": analysis_results["tone_analysis"]["tone_categories"]
+                }
+            }
+            
+            return jsonify(formatted_results)
+
+    except Exception as e:
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+        
+    finally:
+        if 'temp_file' in locals():
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     if "audio" not in request.files:
@@ -227,29 +374,79 @@ def transcribe():
             "segments": [],
             "text": ""
         }), 500
-
+@app.route('/test-excel', methods=['GET'])
+def test_excel():
+    try:
+        questions = load_questions_from_excel()
+        return jsonify({
+            "status": "success",
+            "skills": list(questions.keys()),
+            "sample_questions": {k: v[:2] for k, v in questions.items()}  # Show first 2 per skill
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "path": os.path.abspath('qstns.xlsx')
+        }), 500
 @app.route('/complete-interview', methods=['POST'])
 def complete_interview():
     data = request.json
     session_id = data.get("session_id")
     messages = data.get("messages", [])
     transcript = data.get("transcript", {})
-    
+    response_text = data.get("response_text", "")  # Add this parameter
+
     if not session_id:
         return jsonify({"error": "Session ID is required"}), 400
 
     try:
+        # Initialize analyzer if we have response text to analyze
+        analysis_results = None
+        if response_text:
+            analyzer = ResponseAnalyzer()
+            
+            # Save text to a temporary PDF for analysis (the analyzer expects PDF)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+                # Create a simple PDF with the response text
+                doc = fitz.open()
+                page = doc.new_page()
+                page.insert_text((50, 50), response_text)
+                doc.save(temp_file.name)
+                doc.close()
+                
+                analysis_results = analyzer.analyze_response(temp_file.name)
+                
+                if "error" in analysis_results:
+                    print(f"Analysis error: {analysis_results['error']}")
+
+        # Update the interview record
+        update_data = {
+            "status": "completed",
+            "messages": messages,
+            "transcript": transcript,
+            "completed": True,
+            "completed_at": datetime.datetime.utcnow()
+        }
+        
+        if analysis_results and "error" not in analysis_results:
+            update_data["analysis"] = {
+                "scores": analysis_results["scores"],
+                "word_count": analysis_results["word_count"],
+                "sentence_count": analysis_results["sentence_count"],
+                "improvement_suggestions": analysis_results["improvement_suggestions"]
+            }
+
         interviews_collection.update_one(
             {"_id": ObjectId(session_id)},
-            {"$set": {
-                "status": "completed",
-                "messages": messages,
-                "transcript": transcript,
-                "completed": True,
-                "completed_at": datetime.datetime.utcnow()
-            }}
+            {"$set": update_data}
         )
-        return jsonify({"message": "Interview marked as complete"})
+        
+        return jsonify({
+            "message": "Interview marked as complete",
+            "analysis": analysis_results["scores"] if analysis_results and "error" not in analysis_results else None
+        })
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
