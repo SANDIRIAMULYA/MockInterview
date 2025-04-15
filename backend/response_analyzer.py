@@ -20,7 +20,8 @@ class ResponseAnalyzer:
     def __init__(self):
         # Initialize NLP tools
         self.nlp = spacy.load('en_core_web_md')
-        self.language_tool = language_tool_python.LanguageTool('en-US')
+        # Change this in your ResponseAnalyzer
+        self.language_tool = language_tool_python.LanguageTool('en-US', remote_server='https://api.languagetool.org')
         self.stop_words = set(stopwords.words('english'))
 
         # Define common filler words

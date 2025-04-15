@@ -1,16 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, CircularProgress, Box, Typography } from '@mui/material';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { Button, CircularProgress, Box, Typography, Paper, Grid } from '@mui/material';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import './Review.css';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+
+const getScoreColor = (score) => {
+    if (score >= 80) return '#4CAF50'; // Green
+    if (score >= 60) return '#FFC107'; // Amber
+    if (score >= 40) return '#FF9800'; // Orange
+    return '#F44336'; // Red
+};
 
 const Review = () => {
     const navigate = useNavigate();
     const [interviewData, setInterviewData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState(null);
+    const [analysis, setAnalysis] = useState(null);
 
     useEffect(() => {
         const results = localStorage.getItem('interviewResults');
@@ -18,11 +26,66 @@ const Review = () => {
             const data = JSON.parse(results);
             setInterviewData(data);
             calculateStats(data);
+            
+            // Check if we have analysis data in the results
+            if (data.analysis) {
+                setAnalysis(data.analysis);
+            } else {
+                // If not, try to analyze the transcript
+                analyzeTranscript(data);
+            }
         } else {
             navigate('/');
         }
         setLoading(false);
     }, [navigate]);
+
+    const analyzeTranscript = async (data) => {
+        try {
+            // Combine all user messages into a single text
+            const responseText = data.messages
+                .filter(msg => msg.type === 'user')
+                .map(msg => msg.text)
+                .join(' ');
+    
+            console.log('Text being sent for analysis:', responseText); // Debug log
+    
+            if (!responseText) {
+                console.log('No response text to analyze');
+                return;
+            }
+    
+            const response = await fetch('http://localhost:5000/analyze-text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: responseText })
+            });
+    
+            console.log('Analysis response status:', response.status); // Debug log
+    
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Analysis failed with response:', errorText);
+                throw new Error('Analysis failed');
+            }
+    
+            const result = await response.json();
+            console.log('Analysis results received:', result); // Debug log
+            
+            setAnalysis(result);
+            
+            // Update localStorage with the analysis results
+            const updatedResults = {
+                ...data,
+                analysis: result
+            };
+            localStorage.setItem('interviewResults', JSON.stringify(updatedResults));
+        } catch (error) {
+            console.error('Analysis error:', error);
+        }
+    };
 
     const calculateStats = (data) => {
         if (!data) return;
@@ -114,6 +177,15 @@ const Review = () => {
         { name: 'Pauses', value: parseFloat(stats.pausePercentage) }
     ];
 
+    // Prepare data for analysis radar chart
+    const analysisData = analysis ? [
+        { subject: 'Grammar', A: analysis.scores?.grammar_score || 0, fullMark: 100 },
+        { subject: 'Stop Words', A: analysis.scores?.stop_word_score || 0, fullMark: 100 },
+        { subject: 'Filler Words', A: analysis.scores?.filler_score || 0, fullMark: 100 },
+        { subject: 'Tone', A: analysis.scores?.tone_score || 0, fullMark: 100 },
+        { subject: 'Overall', A: analysis.scores?.overall_score || 0, fullMark: 100 },
+    ] : [];
+
     return (
         <div className="review-container">
             <Typography variant="h4" gutterBottom>Interview Review</Typography>
@@ -138,7 +210,174 @@ const Review = () => {
                         of total interview time
                     </Typography>
                 </div>
+
+                {analysis?.scores && (
+                    <div className="stat-card">
+                        <Typography variant="h6">Overall Score</Typography>
+                        <Typography variant="h3">
+                            {analysis.scores.overall_score.toFixed(1)}/100
+                        </Typography>
+                        <Typography variant="subtitle1">
+                            Response Quality
+                        </Typography>
+                    </div>
+                )}
             </div>
+
+            {/* Analysis Section */}
+            {analysis && (
+                <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+                    <Typography variant="h5" gutterBottom>Response Analysis</Typography>
+                    
+                    {/* Score Cards with Progress Rings */}
+                    <Box sx={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap', 
+                        gap: 3, 
+                        mb: 4,
+                        justifyContent: 'center'
+                    }}>
+                        {[
+                            { key: 'overall', label: 'Overall', value: analysis.scores.overall_score },
+                            { key: 'grammar', label: 'Grammar', value: analysis.scores.grammar_score, 
+                              detail: `${analysis.grammar_analysis?.error_count || 0} errors` },
+                            { key: 'stop_words', label: 'Stop Words', value: analysis.scores.stop_word_score,
+                              detail: `${analysis.stop_word_analysis?.stop_word_count || 0} found` },
+                            { key: 'filler', label: 'Filler Words', value: analysis.scores.filler_score,
+                              detail: `${analysis.filler_word_analysis?.filler_word_count || 0} found` },
+                            { key: 'tone', label: 'Tone', value: analysis.scores.tone_score,
+                              detail: analysis.tone_analysis?.tone_categories?.join(', ') || 'Neutral' },
+                        ].map((item) => (
+                            <Box key={item.key} sx={{ 
+                                position: 'relative',
+                                width: 120,
+                                height: 120,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Box sx={{ 
+                                    position: 'relative',
+                                    width: '100%',
+                                    height: '100%'
+                                }}>
+                                    <CircularProgress 
+                                        variant="determinate" 
+                                        value={item.value} 
+                                        size={120}
+                                        thickness={4}
+                                        sx={{
+                                            color: getScoreColor(item.value),
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0
+                                        }}
+                                    />
+                                    <Box sx={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        textAlign: 'center'
+                                    }}>
+                                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                                            {item.value.toFixed(0)}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ 
+                                            fontSize: '0.7rem',
+                                            color: 'text.secondary'
+                                        }}>
+                                            {item.label}
+                                        </Typography>
+                                        {item.detail && (
+                                            <Typography variant="caption" sx={{ 
+                                                fontSize: '0.6rem',
+                                                color: 'text.secondary',
+                                                mt: 0.5
+                                            }}>
+                                                {item.detail}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                </Box>
+                            </Box>
+                        ))}
+                    </Box>
+
+                    {/* Radar Chart */}
+                    <Box sx={{ height: 300, mb: 4 }}>
+                        <Typography variant="h6" align="center" gutterBottom>
+                            Response Quality Breakdown
+                        </Typography>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={analysisData}>
+                                <PolarGrid />
+                                <PolarAngleAxis dataKey="subject" />
+                                <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                                <Radar 
+                                    name="Score" 
+                                    dataKey="A" 
+                                    stroke="#8884d8" 
+                                    fill="#8884d8" 
+                                    fillOpacity={0.6} 
+                                />
+                                <Tooltip 
+                                    formatter={(value) => [`${value}/100`, 'Score']}
+                                />
+                            </RadarChart>
+                        </ResponsiveContainer>
+                    </Box>
+
+                    {/* Improvement Suggestions as Cards */}
+                    {analysis.improvement_suggestions?.length > 0 && (
+                        <Box>
+                            <Typography variant="h6" gutterBottom>Improvement Suggestions</Typography>
+                            <Box sx={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 2
+                            }}>
+                                {analysis.improvement_suggestions.map((suggestion, index) => (
+                                    <Paper 
+                                        key={index} 
+                                        elevation={2}
+                                        sx={{
+                                            p: 2,
+                                            borderLeft: '4px solid',
+                                            borderColor: 'primary.main',
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: 2
+                                        }}
+                                    >
+                                        <Box sx={{
+                                            width: 24,
+                                            height: 24,
+                                            borderRadius: '50%',
+                                            bgcolor: 'primary.main',
+                                            color: 'white',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            flexShrink: 0,
+                                            mt: '2px'
+                                        }}>
+                                            {index + 1}
+                                        </Box>
+                                        <Typography variant="body1">{suggestion}</Typography>
+                                    </Paper>
+                                ))}
+                            </Box>
+                        </Box>
+                    )}
+                </Paper>
+            )}
 
             <div className="charts-section">
                 <div className="chart-container">

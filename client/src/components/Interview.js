@@ -224,16 +224,43 @@ const Interview = () => {
         mediaRecorderRef.current = null;
     };
 
-    const completeInterview = () => {
+    const completeInterview = async () => {
         setInterviewCompleted(true);
         addBotMessage("Interview completed. Thank you!");
         
+        // Combine all user responses for analysis
+        const responseText = messages
+            .filter(msg => msg.type === 'user')
+            .map(msg => msg.text)
+            .join(' ');
+    
+        let analysisResults = null;
+        
+        if (responseText) {
+            try {
+                const response = await fetch('http://localhost:5000/analyze-text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: responseText })
+                });
+    
+                if (response.ok) {
+                    analysisResults = await response.json();
+                }
+            } catch (error) {
+                console.error('Analysis error:', error);
+            }
+        }
+    
         const interviewResults = {
             sessionId: sessionData._id,
             skills,
             questions: questionsBySkill,
             messages,
             transcript,
+            analysis: analysisResults,  // Add analysis results here
             date: new Date().toISOString()
         };
         

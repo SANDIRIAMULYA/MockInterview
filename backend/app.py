@@ -3,6 +3,7 @@ from flask_cors import CORS
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
+import time
 import bcrypt
 import fitz  # PyMuPDF
 import spacy
@@ -93,7 +94,7 @@ def load_questions_from_excel(file_path='qstns.xlsx'):
             if skill and question:
                 if skill not in qdict:
                     qdict[skill] = []
-                qdict[skill].append(question)  # Just store the question string
+                qdict[skill].append(question)
         
         print(f"[DEBUG] Loaded questions for skills: {list(qdict.keys())}")
         
@@ -110,10 +111,14 @@ def generate_questions(skills):
         all_questions = load_questions_from_excel()
         questions = {}
         
-        for skill in skills:
+        # Shuffle the skills to randomize their order
+        shuffled_skills = random.sample(skills, len(skills))
+        
+        for skill in shuffled_skills:
             sk = skill.lower()
             if sk in all_questions:
-                questions[skill] = all_questions[sk]  # Already just strings
+                # Shuffle the questions for each skill
+                questions[skill] = random.sample(all_questions[sk], len(all_questions[sk]))
         
         print(f"[DEBUG] Found questions for: {list(questions.keys())}")
         
@@ -240,45 +245,62 @@ def get_questions():
         return jsonify({"error": str(e)}), 500
 @app.route('/analyze-text', methods=['POST'])
 def analyze_text():
-    data = request.json
-    text = data.get("text", "").strip()
-    
-    if not text:
-        return jsonify({"error": "Text is required"}), 400
-
     try:
+        data = request.json
+        text = data.get("text", "").strip()
+        
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
+
+        print(f"\n=== Analyzing text ===")
+        print(f"Text length: {len(text)} characters")
+        print(f"First 100 chars: {text[:100]}...\n")
+
         analyzer = ResponseAnalyzer()
         
-        # Save text to a temporary PDF for analysis
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-            # Create a simple PDF with the text
+        # Create a temporary file path
+        temp_path = os.path.join(tempfile.gettempdir(), f"analysis_{int(time.time())}.pdf")
+        
+        try:
+            # Create PDF
             doc = fitz.open()
             page = doc.new_page()
             page.insert_text((50, 50), text)
-            doc.save(temp_file.name)
+            doc.save(temp_path)
             doc.close()
             
-            analysis_results = analyzer.analyze_response(temp_file.name)
+            print(f"Created temporary PDF at: {temp_path}")
             
-            if "error" in analysis_results:
-                return jsonify({"error": analysis_results["error"]}), 400
-                
+            # Analyze
+            analysis_results = analyzer.analyze_response(temp_path)
+            print(f"Analysis successful: {analysis_results.keys()}")
+            
             return jsonify({
-                "scores": analysis_results["scores"],
-                "word_count": analysis_results["word_count"],
-                "sentence_count": analysis_results["sentence_count"],
-                "improvement_suggestions": analysis_results["improvement_suggestions"]
+                "scores": analysis_results.get("scores", {}),
+                "word_count": analysis_results.get("word_count", 0),
+                "sentence_count": analysis_results.get("sentence_count", 0),
+                "improvement_suggestions": analysis_results.get("improvement_suggestions", [])
             })
             
+        finally:
+            # Clean up
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                print(f"Removed temporary file: {temp_path}")
+                
     except Exception as e:
-        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+        print(f"\n!!! ERROR in analyze-text !!!")
+        print(f"Type: {type(e).__name__}")
+        print(f"Message: {str(e)}")
+        print("Traceback:")
+        import traceback
+        traceback.print_exc()
         
-    finally:
-        if 'temp_file' in locals():
-            try:
-                os.unlink(temp_file.name)
-            except:
-                pass
+        return jsonify({
+            "error": "Analysis failed",
+            "details": str(e),
+            "type": type(e).__name__
+        }), 500
 @app.route('/analyze-response', methods=['POST'])
 def analyze_response():
     if 'file' not in request.files:
@@ -373,6 +395,24 @@ def transcribe():
             "pauses": [],
             "segments": [],
             "text": ""
+        }), 500
+@app.route('/test-analysis', methods=['GET'])
+def test_analysis():
+    try:
+        test_text = "This is a test sentence. It contains some basic English words. The grammar should be correct."
+        
+        analyzer = ResponseAnalyzer()
+        results = analyzer.analyze_grammar(test_text)
+        
+        return jsonify({
+            "success": True,
+            "test_text": test_text,
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
         }), 500
 @app.route('/test-excel', methods=['GET'])
 def test_excel():

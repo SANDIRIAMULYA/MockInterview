@@ -2,6 +2,7 @@
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
+    font-family: 'Roboto', sans-serif;
 }
 
 .stats-overview {
@@ -9,6 +10,7 @@
     justify-content: space-around;
     margin: 30px 0;
     flex-wrap: wrap;
+    gap: 20px;
 }
 
 .stat-card {
@@ -18,7 +20,28 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     text-align: center;
     min-width: 200px;
-    margin: 10px;
+    flex: 1;
+    transition: transform 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+
+.stat-card h3 {
+    margin: 0;
+    font-size: 2.5rem;
+    color: #333;
+}
+
+.stat-card h6 {
+    margin: 0 0 10px 0;
+    color: #666;
+}
+
+.stat-card .subtitle {
+    font-size: 0.9rem;
+    color: #888;
 }
 
 .charts-section {
@@ -37,6 +60,12 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
+.chart-container h6 {
+    margin-top: 0;
+    text-align: center;
+    color: #444;
+}
+
 .transcript-section {
     background: white;
     border-radius: 8px;
@@ -45,29 +74,60 @@
     margin-bottom: 30px;
 }
 
+.transcript-section h6 {
+    margin-top: 0;
+    color: #444;
+}
+
 .transcript-content {
     max-height: 300px;
     overflow-y: auto;
     margin-top: 15px;
-    padding: 10px;
+    padding: 15px;
     border: 1px solid #eee;
     border-radius: 4px;
+    background: #f9f9f9;
+    line-height: 1.6;
+}
+
+.transcript-content p {
+    margin: 0 0 10px 0;
 }
 
 .action-buttons {
     display: flex;
     justify-content: center;
-    margin-top: 20px;
+    margin-top: 30px;
 }
 
+.action-buttons button {
+    padding: 10px 25px;
+    font-size: 1rem;
+}
+
+/* Responsive styles */
 @media (max-width: 768px) {
     .stats-overview {
         flex-direction: column;
-        align-items: center;
+        align-items: stretch;
     }
     
     .stat-card {
-        width: 100%;
+        width: auto;
         margin-bottom: 15px;
+    }
+    
+    .chart-container {
+        min-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .review-container {
+        padding: 15px;
+    }
+    
+    .stat-card {
+        padding: 15px;
     }
 }
