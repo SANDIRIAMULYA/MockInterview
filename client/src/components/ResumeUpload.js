@@ -12,21 +12,16 @@ const ResumeUpload = ({ onSessionStart }) => {
     const [sessionData, setSessionData] = useState(null);
     const navigate = useNavigate();
 
-    // Load session data on component mount
     useEffect(() => {
-        const loadSessionData = () => {
-            const savedSession = localStorage.getItem('interviewSession');
-            if (savedSession) {
-                try {
-                    setSessionData(JSON.parse(savedSession));
-                } catch (e) {
-                    console.error('Failed to parse session data', e);
-                    localStorage.removeItem('interviewSession');
-                }
+        const savedSession = localStorage.getItem('interviewSession');
+        if (savedSession) {
+            try {
+                setSessionData(JSON.parse(savedSession));
+            } catch (e) {
+                console.error('Failed to parse session data', e);
+                localStorage.removeItem('interviewSession');
             }
-        };
-
-        loadSessionData();
+        }
     }, []);
 
     const handleFileChange = (e) => {
@@ -52,18 +47,6 @@ const ResumeUpload = ({ onSessionStart }) => {
         setFile(selectedFile);
         setError('');
         setUploadProgress(0);
-    };
-
-    const extractQuestionsFromSkills = (skills) => {
-        const questionsBySkill = {};
-        skills.forEach(skill => {
-            questionsBySkill[skill] = [
-                `Tell me about your experience with ${skill}`,
-                `What challenges have you faced while working with ${skill}?`,
-                `How would you rate your proficiency in ${skill}?`
-            ];
-        });
-        return questionsBySkill;
     };
 
     const handleUpload = async (e) => {
@@ -102,18 +85,16 @@ const ResumeUpload = ({ onSessionStart }) => {
                 config
             );
 
-            if (!response.data?.skills) {
-                throw new Error('No skills extracted from resume');
+            const { skills, questions, session_id } = response.data;
+
+            if (!skills || !questions) {
+                throw new Error('No skills or questions received from backend');
             }
 
-            const extractedSkills = response.data.skills;
-            const questionsBySkill = extractQuestionsFromSkills(extractedSkills);
-            const sessionId = response.data.session_id || `session_${Date.now()}`;
-
             const newSessionData = {
-                skills: extractedSkills,
-                questions: questionsBySkill,
-                session_id: sessionId,
+                skills,
+                questions,
+                session_id,
                 resumeFile: file.name
             };
 
@@ -161,7 +142,6 @@ const ResumeUpload = ({ onSessionStart }) => {
 
     return (
         <div className="resume-upload-container">
-            {/* Resume Upload Section */}
             <div className="upload-section">
                 <h2>Upload Your Resume</h2>
                 <p>We'll analyze your resume to create a personalized mock interview</p>
@@ -179,11 +159,10 @@ const ResumeUpload = ({ onSessionStart }) => {
                             </div>
                         </div>
                         <div className="action-buttons">
-                            
-                            <button 
-                                onClick={handleNewUpload}
-                                className="btn secondary-btn"
-                            >
+                            <button onClick={handleContinueInterview} className="btn secondary-btn">
+                                Continue the resume
+                            </button>
+                            <button onClick={handleNewUpload} className="btn secondary-btn">
                                 Upload New Resume
                             </button>
                         </div>

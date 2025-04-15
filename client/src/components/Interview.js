@@ -12,7 +12,6 @@ const Interview = () => {
     const [interviewStarted, setInterviewStarted] = useState(false);
     const [messages, setMessages] = useState([]);
     const [isRecording, setIsRecording] = useState(false);
-    const [userAnswer, setUserAnswer] = useState('');
     const [interviewCompleted, setInterviewCompleted] = useState(false);
     const [skills, setSkills] = useState([]);
     const [transcript, setTranscript] = useState(null);
@@ -22,9 +21,6 @@ const Interview = () => {
     const mediaStreamRef = useRef(null);
 
     useEffect(() => {
-        // Clear any previous interview data when component mounts
-        localStorage.removeItem('interviewProgress');
-        
         const savedSession = localStorage.getItem('interviewSession');
         if (savedSession) {
             const session = JSON.parse(savedSession);
@@ -38,11 +34,31 @@ const Interview = () => {
         };
     }, []);
 
+    useEffect(() => {
+        // Automatically move to next question when transcript is received
+        if (transcript && !interviewCompleted) {
+            const timer = setTimeout(() => {
+                handleNextQuestion();
+            }, 1500); // 1.5 second delay before next question
+
+            return () => clearTimeout(timer);
+        }
+    }, [transcript]);
+
     const initializeInterview = (sessionData) => {
-        // Reset all state for a fresh interview
+        const formattedQuestions = {};
+        for (const skill in sessionData.questions) {
+            formattedQuestions[skill] = sessionData.questions[skill].map(q => {
+                if (typeof q === 'object' && q.question) {
+                    return q.question;
+                }
+                return q;
+            });
+        }
+
         setSessionData(sessionData);
         setSkills(sessionData.skills);
-        setQuestionsBySkill(sessionData.questions || {});
+        setQuestionsBySkill(formattedQuestions);
         setMessages([]);
         setCurrentSkillIndex(0);
         setCurrentQIndex(0);
@@ -51,9 +67,8 @@ const Interview = () => {
         setInterviewCompleted(false);
         setRecordingError(null);
 
-        // Start with first question
         const firstSkill = sessionData.skills[0];
-        const firstQuestion = sessionData.questions[firstSkill]?.[0];
+        const firstQuestion = formattedQuestions[firstSkill]?.[0];
         
         if (firstQuestion) {
             setMessages([{
@@ -65,23 +80,7 @@ const Interview = () => {
         }
     };
 
-    useEffect(() => {
-        if (interviewStarted && !interviewCompleted) {
-            const progress = {
-                currentSkillIndex,
-                currentQIndex,
-                messages,
-            };
-            localStorage.setItem('interviewProgress', JSON.stringify(progress));
-        }
-    }, [currentSkillIndex, currentQIndex, messages, interviewStarted, interviewCompleted]);
-
     const handleNextQuestion = () => {
-        if (isRecording) {
-            alert('Please stop recording before proceeding');
-            return;
-        }
-
         const skillKeys = Object.keys(questionsBySkill);
         const currentSkill = skillKeys[currentSkillIndex];
         const questionsForSkill = questionsBySkill[currentSkill];
@@ -104,9 +103,11 @@ const Interview = () => {
     };
 
     const addBotMessage = (text, skill = null) => {
+        const messageText = typeof text === 'object' ? text.question || 'Invalid question format' : text;
+        
         const message = {
             type: 'bot',
-            text,
+            text: messageText,
             skill,
             timestamp: new Date().toLocaleTimeString()
         };
@@ -156,8 +157,7 @@ const Interview = () => {
 
                     setTranscript(result);
                     
-                    // Store answer
-                    const answerText = userAnswer.trim() || result.text || '[Audio response]';
+                    const answerText = result.text || '[Audio response]';
                     addUserMessage(answerText);
                 } else {
                     addUserMessage('[No audio recorded]');
@@ -167,7 +167,6 @@ const Interview = () => {
                 setRecordingError('Failed to process recording');
                 addUserMessage('[Recording error]');
             } finally {
-                setUserAnswer('');
                 audioChunksRef.current = [];
                 cleanupMediaStream();
             }
@@ -229,7 +228,6 @@ const Interview = () => {
         setInterviewCompleted(true);
         addBotMessage("Interview completed. Thank you!");
         
-        // Save final results
         const interviewResults = {
             sessionId: sessionData._id,
             skills,
@@ -252,7 +250,6 @@ const Interview = () => {
     };
 
     const handleNewInterview = () => {
-        // Clear all interview data
         localStorage.removeItem('interviewSession');
         localStorage.removeItem('interviewProgress');
         localStorage.removeItem('interviewResults');
@@ -305,7 +302,9 @@ const Interview = () => {
                                         <span className="timestamp">{msg.timestamp}</span>
                                     </div>
                                     {msg.skill && <div className="skill-label">{msg.skill}</div>}
-                                    <div className="message-text">{msg.text}</div>
+                                    <div className="message-text">
+                                        {msg.text}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -316,12 +315,6 @@ const Interview = () => {
                                     <div className="pulse-dot"></div>
                                     <span>Recording your answer...</span>
                                 </div>
-                                <textarea
-                                    value={userAnswer}
-                                    onChange={(e) => setUserAnswer(e.target.value)}
-                                    placeholder="Or type your answer here instead..."
-                                    className="answer-input"
-                                />
                             </div>
                         )}
 
