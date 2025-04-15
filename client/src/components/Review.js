@@ -1,100 +1,131 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, CircularProgress, Box, Typography, Paper, Grid } from '@mui/material';
+import { Button, CircularProgress, Box, Typography, Paper, Alert } from '@mui/material';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import './Review.css';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
 const getScoreColor = (score) => {
-    if (score >= 80) return '#4CAF50'; // Green
-    if (score >= 60) return '#FFC107'; // Amber
-    if (score >= 40) return '#FF9800'; // Orange
-    return '#F44336'; // Red
+    if (score >= 80) return '#4CAF50';
+    if (score >= 60) return '#FFC107';
+    if (score >= 40) return '#FF9800';
+    return '#F44336';
 };
 
 const Review = () => {
     const navigate = useNavigate();
     const [interviewData, setInterviewData] = useState(null);
-    const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState(null);
     const [analysis, setAnalysis] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [analysisLoading, setAnalysisLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
-        const results = localStorage.getItem('interviewResults');
-        if (results) {
-            const data = JSON.parse(results);
-            setInterviewData(data);
-            calculateStats(data);
-            
-            // Check if we have analysis data in the results
-            if (data.analysis) {
-                setAnalysis(data.analysis);
-            } else {
-                // If not, try to analyze the transcript
-                analyzeTranscript(data);
+        const fetchResults = async () => {
+            try {
+                setLoading(true);
+                setError(null);
+                
+                const results = localStorage.getItem('interviewResults');
+                if (!results) {
+                    // Don't navigate if no results - just show error
+                    setError('No interview data found');
+                    setLoading(false);
+                    return;
+                }
+
+                const data = JSON.parse(results);
+                
+                // Check if there are actual responses to analyze
+                const hasResponses = data.messages?.some(msg => msg.type === 'user');
+                if (!hasResponses) {
+                    setError('No responses to analyze');
+                    setLoading(false);
+                    return;
+                }
+
+                setInterviewData(data);
+                calculateStats(data);
+
+                // Always perform fresh analysis for new interviews
+                await performAnalysis(data);
+            } catch (err) {
+                setError('Failed to load interview results');
+                console.error('Error loading results:', err);
+            } finally {
+                setLoading(false);
             }
-        } else {
-            navigate('/');
-        }
-        setLoading(false);
+        };
+
+        fetchResults();
     }, [navigate]);
 
-    const analyzeTranscript = async (data) => {
+    const performAnalysis = async (data) => {
+        setAnalysisLoading(true);
+        setError(null);
+        
         try {
-            // Combine all user messages into a single text
             const responseText = data.messages
                 .filter(msg => msg.type === 'user')
                 .map(msg => msg.text)
-                .join(' ');
-    
-            console.log('Text being sent for analysis:', responseText); // Debug log
-    
+                .join(' ')
+                .trim();
+
             if (!responseText) {
-                console.log('No response text to analyze');
-                return;
+                throw new Error('No responses to analyze');
             }
-    
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
             const response = await fetch('http://localhost:5000/analyze-text', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ text: responseText })
+                body: JSON.stringify({ text: responseText }),
+                signal: controller.signal
             });
-    
-            console.log('Analysis response status:', response.status); // Debug log
-    
+
+            clearTimeout(timeoutId);
+
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('Analysis failed with response:', errorText);
-                throw new Error('Analysis failed');
+                throw new Error(errorText || 'Analysis failed');
             }
-    
+
             const result = await response.json();
-            console.log('Analysis results received:', result); // Debug log
             
-            setAnalysis(result);
-            
-            // Update localStorage with the analysis results
+            // Update state and localStorage with fresh analysis
             const updatedResults = {
                 ...data,
-                analysis: result
+                analysis: result,
+                analyzedAt: new Date().toISOString()
             };
+            
             localStorage.setItem('interviewResults', JSON.stringify(updatedResults));
-        } catch (error) {
-            console.error('Analysis error:', error);
+            setInterviewData(updatedResults);
+            setAnalysis(result);
+            
+            return result;
+        } catch (err) {
+            setError(err.message || 'Failed to analyze responses');
+            console.error('Analysis error:', err);
+            return null;
+        } finally {
+            setAnalysisLoading(false);
         }
     };
 
     const calculateStats = (data) => {
         if (!data) return;
 
-        // Calculate questions answered
-        const userMessages = data.messages.filter(msg => msg.type === 'user');
-        const questionsAsked = data.messages.filter(msg => msg.type === 'bot' && msg.skill);
+        const userMessages = data.messages?.filter(msg => msg.type === 'user') || [];
+        const questionsAsked = data.messages?.filter(msg => msg.type === 'bot' && msg.skill) || [];
         
-        // Calculate pause percentage from transcript
+        // Calculate pause percentage
         let totalPauseTime = 0;
         let totalAudioTime = 0;
         
@@ -112,7 +143,7 @@ const Review = () => {
 
         // Calculate skill distribution
         const skillStats = {};
-        data.skills.forEach(skill => {
+        data.skills?.forEach(skill => {
             const skillQuestions = questionsAsked.filter(q => q.skill === skill).length;
             const skillAnswers = userMessages.filter((msg, i) => {
                 return i > 0 && data.messages[i-1].skill === skill;
@@ -137,26 +168,40 @@ const Review = () => {
     };
 
     const handleNewInterview = () => {
+        localStorage.removeItem('interviewResults');
         navigate('/upload');
     };
 
-    if (loading) {
+    const handleRetryAnalysis = async () => {
+        if (interviewData) {
+            await performAnalysis(interviewData);
+        }
+    };
+
+    // Show loading state until we have all data or encounter an error
+    if (loading || analysisLoading || (!analysis && !error)) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-                <CircularProgress />
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" flexDirection="column">
+                <CircularProgress size={60} />
+                <Typography variant="h6" sx={{ mt: 2 }}>
+                    {analysisLoading ? 'Analyzing your responses...' : 'Loading your interview results...'}
+                </Typography>
             </Box>
         );
     }
 
-    if (!interviewData || !stats) {
+    // Show error state if no data or analysis failed
+    if (error || !interviewData || !stats) {
         return (
             <Box textAlign="center" mt={4}>
-                <Typography variant="h5">No interview data found</Typography>
+                <Typography variant="h5" gutterBottom>
+                    {error || 'No interview data available'}
+                </Typography>
                 <Button 
                     variant="contained" 
                     color="primary" 
                     onClick={() => navigate('/')}
-                    style={{ marginTop: '20px' }}
+                    sx={{ mt: 2 }}
                 >
                     Back to Home
                 </Button>
@@ -165,7 +210,7 @@ const Review = () => {
     }
 
     // Prepare data for charts
-    const skillData = Object.entries(stats.skillStats).map(([skill, data]) => ({
+    const skillData = Object.entries(stats.skillStats || {}).map(([skill, data]) => ({
         name: skill,
         value: data.percentage,
         questions: data.questions,
@@ -173,23 +218,23 @@ const Review = () => {
     }));
 
     const pauseData = [
-        { name: 'Speaking', value: 100 - parseFloat(stats.pausePercentage) },
-        { name: 'Pauses', value: parseFloat(stats.pausePercentage) }
+        { name: 'Speaking', value: 100 - parseFloat(stats.pausePercentage || 0) },
+        { name: 'Pauses', value: parseFloat(stats.pausePercentage || 0) }
     ];
 
-    // Prepare data for analysis radar chart
-    const analysisData = analysis ? [
-        { subject: 'Grammar', A: analysis.scores?.grammar_score || 0, fullMark: 100 },
-        { subject: 'Stop Words', A: analysis.scores?.stop_word_score || 0, fullMark: 100 },
-        { subject: 'Filler Words', A: analysis.scores?.filler_score || 0, fullMark: 100 },
-        { subject: 'Tone', A: analysis.scores?.tone_score || 0, fullMark: 100 },
-        { subject: 'Overall', A: analysis.scores?.overall_score || 0, fullMark: 100 },
+    const analysisData = analysis?.scores ? [
+        { subject: 'Grammar', A: analysis.scores.grammar_score || 0, fullMark: 100 },
+        { subject: 'Stop Words', A: analysis.scores.stop_word_score || 0, fullMark: 100 },
+        { subject: 'Filler Words', A: analysis.scores.filler_score || 0, fullMark: 100 },
+        { subject: 'Tone', A: analysis.scores.tone_score || 0, fullMark: 100 },
+        { subject: 'Overall', A: analysis.scores.overall_score || 0, fullMark: 100 },
     ] : [];
 
     return (
         <div className="review-container">
             <Typography variant="h4" gutterBottom>Interview Review</Typography>
             
+            {/* Stats Overview */}
             <div className="stats-overview">
                 <div className="stat-card">
                     <Typography variant="h6">Questions Answered</Typography>
@@ -229,14 +274,8 @@ const Review = () => {
                 <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
                     <Typography variant="h5" gutterBottom>Response Analysis</Typography>
                     
-                    {/* Score Cards with Progress Rings */}
-                    <Box sx={{ 
-                        display: 'flex', 
-                        flexWrap: 'wrap', 
-                        gap: 3, 
-                        mb: 4,
-                        justifyContent: 'center'
-                    }}>
+                    {/* Score Cards */}
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4, justifyContent: 'center' }}>
                         {[
                             { key: 'overall', label: 'Overall', value: analysis.scores.overall_score },
                             { key: 'grammar', label: 'Grammar', value: analysis.scores.grammar_score, 
@@ -257,54 +296,41 @@ const Review = () => {
                                 alignItems: 'center',
                                 justifyContent: 'center'
                             }}>
-                                <Box sx={{ 
-                                    position: 'relative',
-                                    width: '100%',
-                                    height: '100%'
-                                }}>
-                                    <CircularProgress 
-                                        variant="determinate" 
-                                        value={item.value} 
-                                        size={120}
-                                        thickness={4}
-                                        sx={{
-                                            color: getScoreColor(item.value),
-                                            position: 'absolute',
-                                            top: 0,
-                                            left: 0
-                                        }}
-                                    />
-                                    <Box sx={{
+                                <CircularProgress 
+                                    variant="determinate" 
+                                    value={item.value} 
+                                    size={120}
+                                    thickness={4}
+                                    sx={{
+                                        color: getScoreColor(item.value),
                                         position: 'absolute',
                                         top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        textAlign: 'center'
-                                    }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                                            {item.value.toFixed(0)}
+                                        left: 0
+                                    }}
+                                />
+                                <Box sx={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    textAlign: 'center'
+                                }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                                        {item.value.toFixed(0)}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                        {item.label}
+                                    </Typography>
+                                    {item.detail && (
+                                        <Typography variant="caption" sx={{ fontSize: '0.6rem', mt: 0.5 }}>
+                                            {item.detail}
                                         </Typography>
-                                        <Typography variant="caption" sx={{ 
-                                            fontSize: '0.7rem',
-                                            color: 'text.secondary'
-                                        }}>
-                                            {item.label}
-                                        </Typography>
-                                        {item.detail && (
-                                            <Typography variant="caption" sx={{ 
-                                                fontSize: '0.6rem',
-                                                color: 'text.secondary',
-                                                mt: 0.5
-                                            }}>
-                                                {item.detail}
-                                            </Typography>
-                                        )}
-                                    </Box>
+                                    )}
                                 </Box>
                             </Box>
                         ))}
@@ -327,22 +353,16 @@ const Review = () => {
                                     fill="#8884d8" 
                                     fillOpacity={0.6} 
                                 />
-                                <Tooltip 
-                                    formatter={(value) => [`${value}/100`, 'Score']}
-                                />
+                                <Tooltip formatter={(value) => [`${value}/100`, 'Score']} />
                             </RadarChart>
                         </ResponsiveContainer>
                     </Box>
 
-                    {/* Improvement Suggestions as Cards */}
+                    {/* Improvement Suggestions */}
                     {analysis.improvement_suggestions?.length > 0 && (
                         <Box>
                             <Typography variant="h6" gutterBottom>Improvement Suggestions</Typography>
-                            <Box sx={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: 2
-                            }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 {analysis.improvement_suggestions.map((suggestion, index) => (
                                     <Paper 
                                         key={index} 
@@ -379,6 +399,7 @@ const Review = () => {
                 </Paper>
             )}
 
+            {/* Charts Section */}
             <div className="charts-section">
                 <div className="chart-container">
                     <Typography variant="h6" align="center">Answer Rate by Skill</Typography>
@@ -419,17 +440,13 @@ const Review = () => {
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                             </Pie>
-                            <Tooltip 
-                                formatter={(value, name, props) => [
-                                    `${value}%`,
-                                    name
-                                ]}
-                            />
+                            <Tooltip formatter={(value) => [`${value}%`, 'Percentage']} />
                         </PieChart>
                     </ResponsiveContainer>
                 </div>
             </div>
 
+            {/* Transcript Section */}
             <div className="transcript-section">
                 <Typography variant="h6">Full Transcript</Typography>
                 <div className="transcript-content">
@@ -439,12 +456,14 @@ const Review = () => {
                 </div>
             </div>
 
+            {/* Action Buttons */}
             <div className="action-buttons">
                 <Button 
                     variant="contained" 
                     color="primary" 
                     onClick={handleNewInterview}
                     size="large"
+                    sx={{ mt: 3 }}
                 >
                     Start New Interview
                 </Button>

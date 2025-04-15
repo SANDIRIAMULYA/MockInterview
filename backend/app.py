@@ -13,6 +13,8 @@ from nltk.corpus import stopwords
 import random
 import tempfile
 import openpyxl
+import fitz  # PyMuPDF
+import hashlib
 from bson import ObjectId
 import datetime
 from audio_transcriber import transcribe_audio_file
@@ -76,34 +78,31 @@ def load_questions_from_excel(file_path='qstns.xlsx'):
     """Load questions from Excel file with proper error handling"""
     qdict = {}
     try:
-        print(f"[DEBUG] Looking for Excel file at: {os.path.abspath(file_path)}")
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Excel file not found at {os.path.abspath(file_path)}")
             
         wb = openpyxl.load_workbook(file_path)
         sheet = wb.active
         
-        print(f"[DEBUG] Excel sheet loaded. Rows: {sheet.max_row}, Columns: {sheet.max_column}")
-        
         for i, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
             skill = str(row[0]).lower().strip() if row[0] else None
             question = str(row[1]).strip() if row[1] else None
             
-            print(f"[DEBUG] Row {i}: Skill='{skill}', Question='{question}'")
+            # Remove numbers and dots/colons at the start of questions
+            if question:
+                # This regex removes leading numbers followed by punctuation and spaces
+                question = re.sub(r'^\d+[.:]\s*', '', question).strip()
             
             if skill and question:
                 if skill not in qdict:
                     qdict[skill] = []
                 qdict[skill].append(question)
         
-        print(f"[DEBUG] Loaded questions for skills: {list(qdict.keys())}")
-        
         if not qdict:
             raise ValueError("Excel file contains no valid questions")
             
         return qdict
     except Exception as e:
-        print(f"[ERROR] Failed to load questions: {str(e)}")
         raise ValueError(f"Could not load questions: {str(e)}")
 
 def generate_questions(skills):
