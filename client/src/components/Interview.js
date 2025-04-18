@@ -17,7 +17,7 @@ const Interview = () => {
     const [transcript, setTranscript] = useState(null);
     const [recordingError, setRecordingError] = useState(null);
     const [isRedirectingToReview, setIsRedirectingToReview] = useState(false);
-    const [countdown, setCountdown] = useState(60);
+    const [countdown, setCountdown] = useState(30); // Changed from 60 to 15
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const mediaStreamRef = useRef(null);
@@ -87,7 +87,7 @@ const Interview = () => {
 
     const handleReviewResults = () => {
         setIsRedirectingToReview(true);
-        setCountdown(60);
+        setCountdown(30); // Changed from 60 to 15
         
         countdownRef.current = setInterval(() => {
             setCountdown(prev => {
@@ -302,8 +302,8 @@ const Interview = () => {
     const handleNewInterview = () => {
         localStorage.removeItem('interviewSession');
         localStorage.removeItem('interviewProgress');
-        localStorage.removeItem('interviewResults'); // Clear 'interviewResults'
-        localStorage.removeItem('currentInterview'); // Clear 'currentInterview' - if you decide to use it
+        localStorage.removeItem('interviewResults');
+        localStorage.removeItem('currentInterview');
         navigate('/upload');
     };
 
