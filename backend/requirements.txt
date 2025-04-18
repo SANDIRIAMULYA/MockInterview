@@ -1,0 +1,15 @@
+flask
+flask-cors
+pymongo
+python-dotenv
+bcrypt
+pymupdf
+spacy
+nltk
+language-tool-python
+textblob
+scikit-learn
+gunicorn
+python-resize-image
+whisper
+openpyxl

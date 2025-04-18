@@ -242,63 +242,75 @@ def get_questions():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# In your Flask backend (app.py or similar)
 @app.route('/analyze-text', methods=['POST'])
 def analyze_text():
     try:
-        data = request.json
-        text = data.get("text", "").strip()
+        data = request.get_json()
+        print("\n=== Received data for analysis ===")
         
-        if not text:
-            return jsonify({"error": "Text is required"}), 400
-
-        print(f"\n=== Analyzing text ===")
+        if not data or 'text' not in data:
+            print("Error: Missing 'text' in request")
+            return jsonify({"status": "error", "message": "Text is required"}), 400
+            
+        text = data['text']
+        session_id = data.get('session_id')
+        
+        # Only check for existing analysis if we have a valid session_id
+        analysis_results = None
+        if session_id and session_id != 'unknown':
+            try:
+                interview = interviews_collection.find_one({"_id": ObjectId(session_id)})
+                if interview and interview.get("analysis"):
+                    print("Returning existing analysis from database")
+                    return jsonify({
+                        "status": "success",
+                        "analysis": interview["analysis"]
+                    })
+            except:
+                # If session_id is invalid, just proceed with new analysis
+                print(f"Invalid session_id format: {session_id}")
+        
         print(f"Text length: {len(text)} characters")
-        print(f"First 100 chars: {text[:100]}...\n")
-
+        
+        # Initialize analyzer
         analyzer = ResponseAnalyzer()
         
-        # Create a temporary file path
-        temp_path = os.path.join(tempfile.gettempdir(), f"analysis_{int(time.time())}.pdf")
+        # Perform analysis
+        analysis_results = analyzer.analyze_text_response(text)
         
-        try:
-            # Create PDF
-            doc = fitz.open()
-            page = doc.new_page()
-            page.insert_text((50, 50), text)
-            doc.save(temp_path)
-            doc.close()
-            
-            print(f"Created temporary PDF at: {temp_path}")
-            
-            # Analyze
-            analysis_results = analyzer.analyze_response(temp_path)
-            print(f"Analysis successful: {analysis_results.keys()}")
-            
+        if "error" in analysis_results:
+            print(f"Analysis error: {analysis_results['error']}")
             return jsonify({
-                "scores": analysis_results.get("scores", {}),
-                "word_count": analysis_results.get("word_count", 0),
-                "sentence_count": analysis_results.get("sentence_count", 0),
-                "improvement_suggestions": analysis_results.get("improvement_suggestions", [])
-            })
-            
-        finally:
-            # Clean up
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                print(f"Removed temporary file: {temp_path}")
-                
-    except Exception as e:
-        print(f"\n!!! ERROR in analyze-text !!!")
-        print(f"Type: {type(e).__name__}")
-        print(f"Message: {str(e)}")
-        print("Traceback:")
-        import traceback
-        traceback.print_exc()
+                "status": "error",
+                "message": analysis_results['error'],
+                "traceback": analysis_results.get('traceback', '')
+            }), 500
+        
+        print("\n=== Analysis Results ===")
+        print(f"Overall Score: {analysis_results['scores']['overall_score']}")
+        
+        # Store the analysis in the database if we have a valid session_id
+        if session_id and session_id != 'unknown':
+            try:
+                interviews_collection.update_one(
+                    {"_id": ObjectId(session_id)},
+                    {"$set": {"analysis": analysis_results}}
+                )
+                print("Analysis results stored in database")
+            except:
+                print("Could not store analysis in database - invalid session_id")
         
         return jsonify({
-            "error": "Analysis failed",
-            "details": str(e),
-            "type": type(e).__name__
+            "status": "success",
+            "analysis": analysis_results
+        })
+        
+    except Exception as e:
+        print(f"Error during analysis: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
         }), 500
 @app.route('/analyze-response', methods=['POST'])
 def analyze_response():
@@ -428,64 +440,57 @@ def test_excel():
             "message": str(e),
             "path": os.path.abspath('qstns.xlsx')
         }), 500
+@app.route('/check-analysis-status', methods=['POST'])
+def check_analysis_status():
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        
+        if not session_id:
+            return jsonify({"error": "Session ID is required"}), 400
+            
+        interview = interviews_collection.find_one({"_id": ObjectId(session_id)})
+        if not interview:
+            return jsonify({"error": "Interview not found"}), 404
+            
+        return jsonify({
+            "has_analysis": bool(interview.get("analysis")),
+            "analysis": interview.get("analysis", None)
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 @app.route('/complete-interview', methods=['POST'])
 def complete_interview():
-    data = request.json
-    session_id = data.get("session_id")
-    messages = data.get("messages", [])
-    transcript = data.get("transcript", {})
-    response_text = data.get("response_text", "")  # Add this parameter
-
-    if not session_id:
-        return jsonify({"error": "Session ID is required"}), 400
-
     try:
-        # Initialize analyzer if we have response text to analyze
-        analysis_results = None
-        if response_text:
-            analyzer = ResponseAnalyzer()
-            
-            # Save text to a temporary PDF for analysis (the analyzer expects PDF)
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-                # Create a simple PDF with the response text
-                doc = fitz.open()
-                page = doc.new_page()
-                page.insert_text((50, 50), response_text)
-                doc.save(temp_file.name)
-                doc.close()
-                
-                analysis_results = analyzer.analyze_response(temp_file.name)
-                
-                if "error" in analysis_results:
-                    print(f"Analysis error: {analysis_results['error']}")
+        data = request.json
+        session_id = data.get("session_id")
+        
+        if not session_id:
+            return jsonify({"error": "Session ID is required"}), 400
 
-        # Update the interview record
+        # Prepare update data
         update_data = {
             "status": "completed",
-            "messages": messages,
-            "transcript": transcript,
-            "completed": True,
-            "completed_at": datetime.datetime.utcnow()
+            "completed_at": datetime.datetime.utcnow(),
+            "messages": data.get("messages", []),
+            "transcript": data.get("transcript", {})
         }
-        
-        if analysis_results and "error" not in analysis_results:
-            update_data["analysis"] = {
-                "scores": analysis_results["scores"],
-                "word_count": analysis_results["word_count"],
-                "sentence_count": analysis_results["sentence_count"],
-                "improvement_suggestions": analysis_results["improvement_suggestions"]
-            }
 
-        interviews_collection.update_one(
+        # Add analysis if provided
+        if data.get("analysis"):
+            update_data["analysis"] = data["analysis"]
+
+        result = interviews_collection.update_one(
             {"_id": ObjectId(session_id)},
             {"$set": update_data}
         )
-        
-        return jsonify({
-            "message": "Interview marked as complete",
-            "analysis": analysis_results["scores"] if analysis_results and "error" not in analysis_results else None
-        })
-        
+
+        if result.modified_count == 0:
+            return jsonify({"error": "Interview not found"}), 404
+
+        return jsonify({"status": "success"})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

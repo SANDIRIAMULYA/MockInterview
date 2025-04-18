@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Interview.css';
-import { Button } from '@mui/material';
+import { Button, CircularProgress, Typography, Box } from '@mui/material';
 
 const Interview = () => {
     const navigate = useNavigate();
@@ -16,9 +16,12 @@ const Interview = () => {
     const [skills, setSkills] = useState([]);
     const [transcript, setTranscript] = useState(null);
     const [recordingError, setRecordingError] = useState(null);
+    const [isRedirectingToReview, setIsRedirectingToReview] = useState(false);
+    const [countdown, setCountdown] = useState(60);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const mediaStreamRef = useRef(null);
+    const countdownRef = useRef(null);
 
     useEffect(() => {
         const savedSession = localStorage.getItem('interviewSession');
@@ -31,15 +34,17 @@ const Interview = () => {
             if (mediaStreamRef.current) {
                 mediaStreamRef.current.getTracks().forEach(track => track.stop());
             }
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+            }
         };
     }, []);
 
     useEffect(() => {
-        // Automatically move to next question when transcript is received
         if (transcript && !interviewCompleted) {
             const timer = setTimeout(() => {
                 handleNextQuestion();
-            }, 1500); // 1.5 second delay before next question
+            }, 1500);
 
             return () => clearTimeout(timer);
         }
@@ -78,6 +83,27 @@ const Interview = () => {
                 timestamp: new Date().toLocaleTimeString()
             }]);
         }
+    };
+
+    const handleReviewResults = () => {
+        setIsRedirectingToReview(true);
+        setCountdown(60);
+        
+        countdownRef.current = setInterval(() => {
+            setCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(countdownRef.current);
+                    navigate('/review');
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    };
+
+    const cancelRedirect = () => {
+        clearInterval(countdownRef.current);
+        setIsRedirectingToReview(false);
     };
 
     const handleNextQuestion = () => {
@@ -124,7 +150,6 @@ const Interview = () => {
 
     const toggleRecording = async () => {
         if (isRecording) {
-            // Stop recording
             try {
                 setIsRecording(false);
                 setRecordingError(null);
@@ -171,7 +196,6 @@ const Interview = () => {
                 cleanupMediaStream();
             }
         } else {
-            // Start recording
             try {
                 if (!navigator.mediaDevices?.getUserMedia) {
                     throw new Error('Audio not supported');
@@ -228,7 +252,6 @@ const Interview = () => {
         setInterviewCompleted(true);
         addBotMessage("Interview completed. Thank you!");
         
-        // Combine all user responses for analysis
         const responseText = messages
             .filter(msg => msg.type === 'user')
             .map(msg => msg.text)
@@ -260,7 +283,7 @@ const Interview = () => {
             questions: questionsBySkill,
             messages,
             transcript,
-            analysis: analysisResults,  // Add analysis results here
+            analysis: analysisResults,
             date: new Date().toISOString()
         };
         
@@ -279,7 +302,8 @@ const Interview = () => {
     const handleNewInterview = () => {
         localStorage.removeItem('interviewSession');
         localStorage.removeItem('interviewProgress');
-        localStorage.removeItem('interviewResults');
+        localStorage.removeItem('interviewResults'); // Clear 'interviewResults'
+        localStorage.removeItem('currentInterview'); // Clear 'currentInterview' - if you decide to use it
         navigate('/upload');
     };
 
@@ -393,21 +417,37 @@ const Interview = () => {
                         ) : (
                             <div className="completion-screen">
                                 <h3>Interview Completed!</h3>
-                                <p>You've answered all the questions.</p>
-                                <div className="completion-buttons">
-                                    <Button 
-                                        onClick={() => navigate('/review')}
-                                        variant="contained"
-                                    >
-                                        Review Answers
-                                    </Button>
-                                    <Button 
-                                        onClick={handleNewInterview}
-                                        variant="contained"
-                                    >
-                                        Start New Interview
-                                    </Button>
-                                </div>
+                                {isRedirectingToReview ? (
+                                    <Box sx={{ textAlign: 'center', mt: 3 }}>
+                                        <CircularProgress size={24} sx={{ mr: 2 }} />
+                                        <Typography variant="body1">
+                                            Preparing your results... {countdown} seconds
+                                        </Typography>
+                                        <Button 
+                                            onClick={cancelRedirect}
+                                            variant="outlined"
+                                            sx={{ mt: 2 }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </Box>
+                                ) : (
+                                    <div className="completion-buttons">
+                                        <Button 
+                                            onClick={handleReviewResults}
+                                            variant="contained"
+                                            sx={{ mr: 2 }}
+                                        >
+                                            Review Answers
+                                        </Button>
+                                        <Button 
+                                            onClick={handleNewInterview}
+                                            variant="contained"
+                                        >
+                                            Start New Interview
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

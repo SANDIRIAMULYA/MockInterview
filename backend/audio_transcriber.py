@@ -67,7 +67,8 @@ def transcribe_audio_file(audio_file, file_extension=".webm"):
             }
 
         # Transcribe with Whisper
-        result = model.transcribe(wav_path)
+        result = model.transcribe(wav_path, language="en")
+
 
         # Detect pauses
         pauses = detect_pauses(wav_path)
