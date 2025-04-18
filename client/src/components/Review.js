@@ -387,7 +387,7 @@ const Review = () => {
             <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" flexDirection="column">
                 <CircularProgress size={60} />
                 <Typography variant="h6" sx={{ mt: 2 }}>
-                    {interviewData && !analysis ? 'Analyzing your responses...' : 'Loading your interview results...'}
+                    {interviewData && !analysis ? 'Loading...' : 'Loading your interview results...'}
                 </Typography>
             </Box>
         );

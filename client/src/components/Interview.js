@@ -421,7 +421,7 @@ const Interview = () => {
                                     <Box sx={{ textAlign: 'center', mt: 3 }}>
                                         <CircularProgress size={24} sx={{ mr: 2 }} />
                                         <Typography variant="body1">
-                                            Preparing your results... {countdown} seconds
+                                            Preparing your results... 
                                         </Typography>
                                         <Button 
                                             onClick={cancelRedirect}
